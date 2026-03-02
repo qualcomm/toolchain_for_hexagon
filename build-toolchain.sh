@@ -247,6 +247,7 @@ build_libs() {
 		-C ./hexagon-linux-cross.cmake \
 		-C ./llvm-project/libcxx/cmake/caches/hexagon-linux-runtimes.cmake \
 		-C ./llvm-project/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake \
+		-DCOMPILER_RT_OS_DIR= \
 		-B ./obj_libs \
 		-S ./llvm-project/runtimes
 
@@ -364,7 +365,6 @@ build_picolibc() {
 	do
 		echo "=== Building picolibc for ${archver} ==="
 		BUILDDIR=obj_picolibc_${archver}
-		rm -rf ${BUILDDIR}
 
 		PICOLIBC_PREFIX=${HEX_PICOLIBC_BASE}
 
