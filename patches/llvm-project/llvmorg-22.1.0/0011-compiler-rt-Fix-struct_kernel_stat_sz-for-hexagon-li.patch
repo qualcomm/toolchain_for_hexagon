@@ -1,7 +1,7 @@
-From d5fc686f86ff61a95b17f31fce8bd2188c1e4d84 Mon Sep 17 00:00:00 2001
+From 8277f8538b5d047295d31529123574b0d5c01729 Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Sun, 1 Mar 2026 13:26:51 -0800
-Subject: [PATCH 10/13] [compiler-rt] Fix struct_kernel_stat_sz for
+Subject: [PATCH 11/15] [compiler-rt] Fix struct_kernel_stat_sz for
  hexagon-linux-musl
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

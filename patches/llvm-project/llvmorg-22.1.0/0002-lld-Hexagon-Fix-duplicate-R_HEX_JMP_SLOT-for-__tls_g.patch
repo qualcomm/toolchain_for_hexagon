@@ -1,7 +1,7 @@
-From 705ba4d9d53fcaa54e2cee43bc834b786d1b5096 Mon Sep 17 00:00:00 2001
+From b67e3a1ddccc52589bb528a14028c66e323927c9 Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Sun, 1 Mar 2026 10:11:37 -0800
-Subject: [PATCH 01/13] [lld][Hexagon] Fix duplicate R_HEX_JMP_SLOT for
+Subject: [PATCH 02/15] [lld][Hexagon] Fix duplicate R_HEX_JMP_SLOT for
  __tls_get_addr with GD PLT
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

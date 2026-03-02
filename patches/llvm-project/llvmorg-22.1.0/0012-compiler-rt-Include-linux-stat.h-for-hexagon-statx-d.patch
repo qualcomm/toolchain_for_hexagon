@@ -1,7 +1,7 @@
-From 9721242d9e87166f3bffb101779fadd5ed490bd5 Mon Sep 17 00:00:00 2001
+From 9af5f76aefab26ca9107be239f31acf1a86eb918 Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Sun, 1 Mar 2026 13:50:19 -0800
-Subject: [PATCH 11/13] [compiler-rt] Include linux/stat.h for hexagon statx
+Subject: [PATCH 12/15] [compiler-rt] Include linux/stat.h for hexagon statx
  definitions
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

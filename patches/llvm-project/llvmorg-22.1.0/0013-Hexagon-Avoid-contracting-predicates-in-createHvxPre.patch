@@ -1,7 +1,7 @@
-From f93a6c1cb41be3c0fc5b0af120a824f1cf98f154 Mon Sep 17 00:00:00 2001
+From 3accc64071edc83d9fd39077bae2ad05ab0f801d Mon Sep 17 00:00:00 2001
 From: Krzysztof Parzyszek <Krzysztof.Parzyszek@amd.com>
 Date: Tue, 24 Feb 2026 11:24:16 -0600
-Subject: [PATCH 12/13] [Hexagon] Avoid contracting predicates in
+Subject: [PATCH 13/15] [Hexagon] Avoid contracting predicates in
  createHvxPrefixPred (#183081)
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

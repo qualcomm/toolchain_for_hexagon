@@ -1,7 +1,7 @@
-From 39b9ea0bc55d544317aafceb22645bbdc224919b Mon Sep 17 00:00:00 2001
+From 58856ece1e4333b41ed877894a06f7f2595f71f8 Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Sun, 1 Mar 2026 13:26:41 -0800
-Subject: [PATCH 09/13] [Hexagon] Enable sanitizer builds for
+Subject: [PATCH 10/15] [Hexagon] Enable sanitizer builds for
  hexagon-linux-musl
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

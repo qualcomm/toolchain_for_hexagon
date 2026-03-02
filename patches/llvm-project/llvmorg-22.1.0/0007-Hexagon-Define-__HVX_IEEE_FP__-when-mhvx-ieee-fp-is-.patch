@@ -1,7 +1,7 @@
-From ad9f2eedb8d436db6a1d2d0f307e4aa7e70698b3 Mon Sep 17 00:00:00 2001
+From 25cef3db96173d8b9eb0760687445ff7e130fcea Mon Sep 17 00:00:00 2001
 From: Ankit Aggarwal <aankit@qti.qualcomm.com>
 Date: Fri, 27 Feb 2026 15:51:03 -0800
-Subject: [PATCH 06/13] [Hexagon] Define __HVX_IEEE_FP__ when -mhvx-ieee-fp is
+Subject: [PATCH 07/15] [Hexagon] Define __HVX_IEEE_FP__ when -mhvx-ieee-fp is
  enabled (#183829)
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

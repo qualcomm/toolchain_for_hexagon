@@ -1,7 +1,7 @@
-From 9cbae2f95344bf9a3ff1334179e7101028f7d053 Mon Sep 17 00:00:00 2001
+From 237748449a5443ab7bb8b4af87513da373fc8e2c Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Sun, 1 Mar 2026 11:33:44 -0800
-Subject: [PATCH 07/13] [Hexagon] Guard HVXIEEEFP intrinsics with
+Subject: [PATCH 08/15] [Hexagon] Guard HVXIEEEFP intrinsics with
  __HVX_IEEE_FP__
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

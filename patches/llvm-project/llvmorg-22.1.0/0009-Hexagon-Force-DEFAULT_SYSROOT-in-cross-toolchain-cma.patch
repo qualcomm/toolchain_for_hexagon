@@ -1,7 +1,7 @@
-From a510bb81b2fb7983146a710244f1f1b49fec7466 Mon Sep 17 00:00:00 2001
+From 70c01494cd3cb960a21694b7fe22b0fc22da7328 Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Sun, 1 Mar 2026 13:26:28 -0800
-Subject: [PATCH 08/13] [Hexagon] Force DEFAULT_SYSROOT in cross-toolchain
+Subject: [PATCH 09/15] [Hexagon] Force DEFAULT_SYSROOT in cross-toolchain
  cmake cache
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

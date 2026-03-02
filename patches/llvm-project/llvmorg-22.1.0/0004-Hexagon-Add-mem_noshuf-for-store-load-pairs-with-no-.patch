@@ -1,7 +1,7 @@
-From bd81c7639738b204777adb4e1c46b3dc20ec693b Mon Sep 17 00:00:00 2001
+From dc662f6ff6f74cf9febafdcb9f33f439f9b75e56 Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Fri, 13 Feb 2026 21:14:42 -0800
-Subject: [PATCH 03/13] [Hexagon] Add :mem_noshuf for store-load pairs with no
+Subject: [PATCH 04/15] [Hexagon] Add :mem_noshuf for store-load pairs with no
  scheduler Order dep
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

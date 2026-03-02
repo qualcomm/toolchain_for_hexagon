@@ -1,7 +1,7 @@
-From fcaf51bcf51b1fd9ca7e76940b0b965d06988467 Mon Sep 17 00:00:00 2001
+From 0ec54d949cd90da335cc2142221d059e2577a58a Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Sun, 1 Mar 2026 16:27:47 -0800
-Subject: [PATCH 13/13] [Hexagon] Fix B0 macro conflict between hexagon_types.h
+Subject: [PATCH 14/15] [Hexagon] Fix B0 macro conflict between hexagon_types.h
  and termios.h
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

@@ -1,7 +1,7 @@
-From 210803eb81ee3e413a8c8988e281366a4666c348 Mon Sep 17 00:00:00 2001
+From 496d5bc5804af7df4759c25b7c0f27cb2b898071 Mon Sep 17 00:00:00 2001
 From: Brian Cain <brian.cain@oss.qualcomm.com>
 Date: Thu, 26 Feb 2026 16:29:01 -0800
-Subject: [PATCH 04/13] [Hexagon] Fix 64-bit funnel shift miscompilation with
+Subject: [PATCH 05/15] [Hexagon] Fix 64-bit funnel shift miscompilation with
  register shift amounts
 Content-Type: text/plain; charset="utf-8"
 Content-Transfer-Encoding: 8bit

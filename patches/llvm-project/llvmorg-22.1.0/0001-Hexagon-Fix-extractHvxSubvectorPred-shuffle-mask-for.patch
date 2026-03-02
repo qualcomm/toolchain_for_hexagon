@@ -1,0 +1,75 @@
+From 9179258b1a98f59e16153ed5d74d889650bf144e Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Mon, 23 Feb 2026 16:46:15 -0600
+Subject: [PATCH 01/15] [Hexagon] Fix extractHvxSubvectorPred shuffle mask for
+ small predicates (#181364)
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+The loop generating the shuffle mask in extractHvxSubvectorPred used
+HwLen/ResLen as the iteration count, but each iteration produces 8
+elements (ResLen * Rep where Rep = 8/ResLen). This means the total mask
+size was (HwLen/ResLen) * 8, which only equals HwLen when ResLen == 8.
+For smaller predicate subvectors (e.g., <4 x i1> or <2 x i1>), the mask
+was too large, causing an assertion failure in getVectorShuffle.
+
+Fix by using HwLen/8 as the loop bound, which correctly produces HwLen
+elements regardless of ResLen.
+
+(cherry picked from commit c3a86ff2d0b397d757345fad7e29c2a6e7dbc823)
+---
+ .../Target/Hexagon/HexagonISelLoweringHVX.cpp |  2 +-
+ .../extract-hvx-subvector-pred-small.ll       | 28 +++++++++++++++++++
+ 2 files changed, 29 insertions(+), 1 deletion(-)
+ create mode 100644 llvm/test/CodeGen/Hexagon/extract-hvx-subvector-pred-small.ll
+
+diff --git a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp
+index 9a0e5cc684b6..cbe1498bb24a 100644
+--- a/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp
++++ b/llvm/lib/Target/Hexagon/HexagonISelLoweringHVX.cpp
+@@ -1428,7 +1428,7 @@ HexagonTargetLowering::extractHvxSubvectorPred(SDValue VecV, SDValue IdxV,
+   unsigned Rep = 8 / ResLen;
+   // Make sure the output fill the entire vector register, so repeat the
+   // 8-byte groups as many times as necessary.
+-  for (unsigned r = 0; r != HwLen/ResLen; ++r) {
++  for (unsigned r = 0; r != HwLen / 8; ++r) {
+     // This will generate the indexes of the 8 interesting bytes.
+     for (unsigned i = 0; i != ResLen; ++i) {
+       for (unsigned j = 0; j != Rep; ++j)
+diff --git a/llvm/test/CodeGen/Hexagon/extract-hvx-subvector-pred-small.ll b/llvm/test/CodeGen/Hexagon/extract-hvx-subvector-pred-small.ll
+new file mode 100644
+index 000000000000..2e88dab7e496
+--- /dev/null
++++ b/llvm/test/CodeGen/Hexagon/extract-hvx-subvector-pred-small.ll
+@@ -0,0 +1,28 @@
++; RUN: llc -mtriple=hexagon -mcpu=hexagonv73 -mattr=+hvxv73,+hvx-length128b \
++; RUN:   < %s | FileCheck %s
++;
++; Check that extracting a small predicate subvector (<8 x i1) from an HVX
++; predicate compiles correctly. The bug was in extractHvxSubvectorPred where
++; the loop generating the shuffle mask used HwLen/ResLen instead of HwLen/8,
++; producing a mask of wrong size for ResLen < 8.
++
++target datalayout = "e-m:e-p:32:32:32-a:0-n16:32-i64:64:64-i32:32:32-i16:16:16-i1:8:8-f32:32:32-f64:64:64-v32:32:32-v64:64:64-v512:512:512-v1024:1024:1024-v2048:2048:2048"
++target triple = "hexagon-unknown-linux-musl"
++
++; CHECK-LABEL: test_extract_v4i1:
++; CHECK-DAG:   vand(v{{[0-9]+}},r{{[0-9]+}})
++; CHECK-DAG:   vdelta(v{{[0-9]+}},v{{[0-9]+}})
++; CHECK:       dealloc_return
++define <4 x i1> @test_extract_v4i1(<128 x i1> %pred) {
++  %r = shufflevector <128 x i1> %pred, <128 x i1> poison, <4 x i32> <i32 0, i32 1, i32 2, i32 3>
++  ret <4 x i1> %r
++}
++
++; CHECK-LABEL: test_extract_v2i1:
++; CHECK-DAG:   vand(v{{[0-9]+}},r{{[0-9]+}})
++; CHECK-DAG:   vdelta(v{{[0-9]+}},v{{[0-9]+}})
++; CHECK:       dealloc_return
++define <2 x i1> @test_extract_v2i1(<128 x i1> %pred) {
++  %r = shufflevector <128 x i1> %pred, <128 x i1> poison, <2 x i32> <i32 0, i32 1>
++  ret <2 x i1> %r
++}
+-- 
+2.34.1
+

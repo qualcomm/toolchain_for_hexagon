@@ -1,0 +1,36 @@
+From f5a6c3089469621a28ad767a0168066ba4d7f874 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Sun, 1 Mar 2026 20:10:12 -0800
+Subject: [PATCH 15/15] [compiler-rt] Fix ubsan link failure for hexagon: use
+ in-tree libc++ ABI
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+The unified runtimes build passes -lc++abi as a bare linker flag when
+SANITIZER_CXX_ABI is set to "libcxxabi", but the library only exists
+in the build tree with no -L pointing at it.
+
+Switch to SANITIZER_CXX_ABI="libc++" with SANITIZER_CXX_ABI_INTREE=ON
+so that compiler-rt resolves the CMake target libcxx-abi-shared instead
+of emitting a bare -lc++abi flag. This both resolves the library path
+and creates a proper build dependency.
+---
+ compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
+index 49e7a311eb05..ab899983367e 100644
+--- a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
++++ b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
+@@ -10,6 +10,7 @@ set(COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
+ set(COMPILER_RT_BUILD_MEMPROF ON CACHE BOOL "")
+ set(COMPILER_RT_BUILD_CTX_PROFILE ON CACHE BOOL "")
+ 
+-set(SANITIZER_CXX_ABI "libcxxabi" CACHE STRING "")
++set(SANITIZER_CXX_ABI "libc++" CACHE STRING "")
++set(SANITIZER_CXX_ABI_INTREE ON CACHE BOOL "")
+ set(COMPILER_RT_USE_BUILTINS_LIBRARY ON CACHE BOOL "")
+ 
+-- 
+2.34.1
+
