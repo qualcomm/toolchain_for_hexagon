@@ -57,4 +57,5 @@ under `qemu-hexagon`.
 
 | Example | Description |
 |---------|-------------|
+| [rust-hvx/](rust-hvx/) | Rust HVX intrinsics: image brightness/contrast with fixed-point SIMD |
 | [contrived/](contrived/) | Rust + Zig + C++ multi-language demo |

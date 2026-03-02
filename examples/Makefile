@@ -6,7 +6,7 @@
 #   make clean                    # clean all examples
 #   make TOOLCHAIN_ROOT=/path/... # override toolchain location
 
-SUBDIRS := ubsan asan baremetal-semihosting baremetal-kasan
+SUBDIRS := ubsan asan baremetal-semihosting baremetal-kasan rust-hvx
 
 .PHONY: all clean run $(SUBDIRS)
 
