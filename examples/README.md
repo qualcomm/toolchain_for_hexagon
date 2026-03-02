@@ -1,27 +1,60 @@
+# Hexagon Toolchain Examples
 
-# Examples of the Opensource Hexagon Toolchain
+Example programs for the [open-source Hexagon toolchain](https://github.com/quic/toolchain_for_hexagon).
 
-* Building/running C, C++ programs for linux
+## Prerequisites
 
-```
-$ wget https://artifacts.codelinaro.org/artifactory/codelinaro-toolchain-for-hexagon/18.1.0-rc1_02/clang+llvm-18.1.0-rc1-cross-hexagon-unknown-linux-musl.tar.xz
-$ sudo tar xf clang+llvm-18.1.0-rc1-cross-hexagon-unknown-linux-musl.tar.xz -C /opt
-$ export PATH=/opt/clang+llvm-18.1.0-rc1-cross-hexagon-unknown-linux-musl/x86_64-linux-gnu/bin:$PATH
-$ cat <<EOF > example.cpp
-#include <iostream>
-
-int main(int argc, const char *argv[]) {
-    std::cout << "Hello, world!\n";
-}
-EOF
-$ hexagon-unknown-linux-musl-clang++ -static -o ./example_static example.cpp
-$ qemu-hexagon ./example_static
-Hello, world!
-
-$ hexagon-unknown-linux-musl-clang++ -o ./example example.cpp
-$ qemu-hexagon -L /opt/clang+llvm-18.1.0-rc1-cross-hexagon-unknown-linux-musl/x86_64-linux-gnu/target/hexagon-unknown-linux-musl ./example
-Hello, world!
+[Download](https://github.com/quic/toolchain_for_hexagon/releases) and unpack the toolchain:
 
 ```
+VER=22.1.0_
+wget https://artifacts.codelinaro.org/artifactory/codelinaro-toolchain-for-hexagon/${VER}/clang+llvm-${VER}-cross-hexagon-unknown-linux-musl.tar.zst
+tar --zstd -xf clang+llvm-${VER}-cross-hexagon-unknown-linux-musl.tar.zst -C /opt
+```
 
-* See [demo of Rust + zig](contrived/README.md)
+The default install location is `/opt/clang+llvm-22.1.0-cross-hexagon-unknown-linux-musl`.
+Override with `TOOLCHAIN_ROOT` if installed elsewhere.
+
+## Quick Start
+
+Build and run all examples:
+
+```
+make
+make run
+```
+
+Or with a custom toolchain location:
+
+```
+make TOOLCHAIN_ROOT=/path/to/clang+llvm-22.1.0-cross-hexagon-unknown-linux-musl
+make run
+```
+
+## Examples
+
+### Baremetal (hexagon-clang)
+
+These programs target `hexagon-unknown-none-elf` and run under
+`qemu-system-hexagon` or `hexagon-sim` (requires [Hexagon SDK](https://github.com/snapdragon-toolchain/hexagon-sdk/releases)).
+
+| Example | Description |
+|---------|-------------|
+| [baremetal-semihosting/](baremetal-semihosting/) | Hello world with picolibc `printf` via semihosting |
+| [baremetal-kasan/](baremetal-kasan/) | Kernel Address Sanitizer on bare metal via split-target build |
+
+### Sanitizers (Linux, hexagon-unknown-linux-musl-clang)
+
+These programs target `hexagon-unknown-linux-musl` (Linux userspace) and run
+under `qemu-hexagon`.
+
+| Example | Sanitizer | Bugs Demonstrated |
+|---------|-----------|-------------------|
+| [ubsan/](ubsan/) | Undefined Behavior Sanitizer | Signed overflow, bad shift, null deref |
+| [asan/](asan/) | Address Sanitizer | Heap overflow, use-after-free, stack overflow |
+
+### Other
+
+| Example | Description |
+|---------|-------------|
+| [contrived/](contrived/) | Rust + Zig + C++ multi-language demo |
