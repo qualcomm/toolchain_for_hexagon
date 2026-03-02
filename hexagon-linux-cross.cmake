@@ -10,6 +10,7 @@ set(CMAKE_ASM_COMPILER hexagon-unknown-linux-musl-clang CACHE STRING "")
 set(CMAKE_OBJCOPY hexagon-unknown-linux-musl-objcopy CACHE STRING "")
 set(CMAKE_C_COMPILER_RANLIB hexagon-unknown-linux-musl-ranlib CACHE STRING "")
 set(CMAKE_CROSSCOMPILING_EMULATOR qemu-hexagon CACHE STRING "")
+set(CMAKE_C_COMPILER_FORCED ON CACHE BOOL "")
 set(CMAKE_CXX_COMPILER_FORCED ON CACHE BOOL "")
 
 # llvm-project/runtimes/ depends on these features because

@@ -14,23 +14,33 @@ Switch to SANITIZER_CXX_ABI="libc++" with SANITIZER_CXX_ABI_INTREE=ON
 so that compiler-rt resolves the CMake target libcxx-abi-shared instead
 of emitting a bare -lc++abi flag. This both resolves the library path
 and creates a proper build dependency.
+
+Also set CAN_TARGET_hexagon=1 in the cache so that compiler-rt's
+test_target_arch() macro skips the try_compile() probe.  During
+cross-compilation the probe fails (the host cannot link a hexagon
+binary), leaving CAN_TARGET_hexagon=FALSE and causing
+filter_available_targets() to silently strip hexagon from every
+sanitizer architecture list.  Pre-populating the cache variable
+bypasses the probe, matching what hexagon-builtins-baremetal.cmake
+already does.
 ---
- compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake | 3 ++-
- 1 file changed, 2 insertions(+), 1 deletion(-)
+ compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
 
 diff --git a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
-index 49e7a311eb05..ab899983367e 100644
+index 49e7a311eb05..269395f965a5 100644
 --- a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
 +++ b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
-@@ -10,6 +10,7 @@ set(COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
+@@ -10,6 +10,8 @@ set(COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
  set(COMPILER_RT_BUILD_MEMPROF ON CACHE BOOL "")
  set(COMPILER_RT_BUILD_CTX_PROFILE ON CACHE BOOL "")
- 
+
 -set(SANITIZER_CXX_ABI "libcxxabi" CACHE STRING "")
++set(CAN_TARGET_hexagon 1 CACHE STRING "")
 +set(SANITIZER_CXX_ABI "libc++" CACHE STRING "")
 +set(SANITIZER_CXX_ABI_INTREE ON CACHE BOOL "")
  set(COMPILER_RT_USE_BUILTINS_LIBRARY ON CACHE BOOL "")
- 
--- 
+
+--
 2.34.1
 
