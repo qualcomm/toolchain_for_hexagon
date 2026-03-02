@@ -80,6 +80,7 @@ ADD patches /root/hexagon-toolchain/patches
 ADD test-suite-patches /root/hexagon-toolchain/test-suite-patches
 ADD get-src-tarballs.sh /root/hexagon-toolchain/get-src-tarballs.sh
 ADD *.cmake /root/hexagon-toolchain/
+ADD hexagon-unknown-none-elf.cfg /root/hexagon-toolchain/
 RUN cd /root/hexagon-toolchain && ./get-src-tarballs.sh ${PWD} ${TOOLCHAIN_INSTALL}/manifest
 
 ADD test_init/test_init.c test_init/Makefile /root/hexagon-toolchain/test_init/
