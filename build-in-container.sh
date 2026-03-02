@@ -13,8 +13,6 @@ fi
 
 DOCKER_BUILD_ARGS="
 --build-arg ARTIFACT_BASE=/usr/local/hexagon-artifacts
---build-arg QEMU_REPO=https://github.com/quic/qemu
---build-arg QEMU_REF=hexagon-sysemu-19-jan-2026
 --build-arg ARTIFACT_TAG=${ARTIFACT_TAG}"
 
 #build

@@ -56,7 +56,7 @@ RUN apt update && \
     apt build-dep -yy --arch-only qemu clang python3
 
 # From env.sh
-ARG QEMU_REPO
+ARG QEMU_REPO=https://github.com/quic/qemu
 ARG QEMU_REF=hexagon-sysemu-01-mar-2026
 
 ARG ARTIFACT_BASE
