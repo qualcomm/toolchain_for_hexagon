@@ -1,0 +1,4 @@
+baremetal_kasan/
+*.o
+*.lds
+kasan_test
