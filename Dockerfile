@@ -70,7 +70,7 @@ ENV MAKE_TARBALLS 1
 ENV LLVM_SRC_URL https://github.com/llvm/llvm-project/archive/llvmorg-${VER}.tar.gz
 ENV ELD_SRC_URL https://github.com/qualcomm/eld/archive/v22.1.0-rc3.tar.gz
 ENV LLVM_TESTS_SRC_URL https://github.com/llvm/llvm-test-suite/archive/llvmorg-${VER}.tar.gz
-ENV MUSL_SRC_URL https://github.com/quic/musl/archive/hexagon-v1.2.4-dec-2025.tar.gz
+ENV MUSL_SRC_URL https://github.com/quic/musl/archive/hexagon-v1.2.4-mar-2026.tar.gz
 ENV LINUX_SRC_URL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.5.tar.xz
 ENV BUSYBOX_SRC_URL https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 ENV PICOLIBC_SRC_URL https://github.com/picolibc/picolibc/releases/download/1.8.11/picolibc-1.8.11.tar.xz
