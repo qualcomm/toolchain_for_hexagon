@@ -1,0 +1,47 @@
+From 9721242d9e87166f3bffb101779fadd5ed490bd5 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Sun, 1 Mar 2026 13:50:19 -0800
+Subject: [PATCH 11/13] [compiler-rt] Include linux/stat.h for hexagon statx
+ definitions
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Hexagon uses statx() instead of stat64() (added in 4f9407fb8af2), but
+musl's <sys/stat.h> does not provide struct statx or STATX_BASIC_STATS.
+The previous comment incorrectly claimed these types come from
+<sys/stat.h>.  Without the definitions, building sanitizers fails:
+
+  sanitizer_linux.cpp: error: member access into incomplete type
+      'struct statx'
+  sanitizer_linux.cpp: error: use of undeclared identifier
+      'STATX_BASIC_STATS'
+
+Include <linux/stat.h> for hexagon, which provides struct statx and
+STATX_BASIC_STATS from the kernel UAPI headers.
+---
+ compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp b/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
+index d3f4fffe0423..c90f36fb514f 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
+@@ -94,10 +94,11 @@ extern "C" SANITIZER_WEAK_ATTRIBUTE const char *strerrorname_np(int);
+ #    include <sys/sysmacros.h>
+ #  endif
+ 
+-// Hexagon uses statx() instead of stat64(). The statx types and
+-// STATX_BASIC_STATS are provided by <sys/stat.h> (already included above)
+-// for both musl and glibc.  Do NOT include <linux/stat.h> here as it
+-// conflicts with musl's definitions.
++// Hexagon uses statx() instead of stat64().  Musl's <sys/stat.h> does
++// not provide struct statx, so pull it from the kernel UAPI header.
++#  if SANITIZER_LINUX && defined(__hexagon__)
++#    include <linux/stat.h>
++#  endif
+ 
+ #  if SANITIZER_LINUX && defined(__powerpc64__)
+ #    include <asm/ptrace.h>
+-- 
+2.34.1
+

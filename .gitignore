@@ -1,6 +1,6 @@
 /hexagon-artifacts
 obj_*
-llvm-project
+/llvm-project
 musl
 llvm-test-suite
 linux

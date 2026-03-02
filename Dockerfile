@@ -76,6 +76,7 @@ ENV BUSYBOX_SRC_URL https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 ENV PICOLIBC_SRC_URL https://github.com/picolibc/picolibc/releases/download/1.8.11/picolibc-1.8.11.tar.xz
 ENV BUILDROOT_SRC_URL https://github.com/quic/buildroot/archive/hexagon-2025.04.30.tar.gz
 
+ADD patches /root/hexagon-toolchain/patches
 ADD test-suite-patches /root/hexagon-toolchain/test-suite-patches
 ADD get-src-tarballs.sh /root/hexagon-toolchain/get-src-tarballs.sh
 ADD *.cmake /root/hexagon-toolchain/

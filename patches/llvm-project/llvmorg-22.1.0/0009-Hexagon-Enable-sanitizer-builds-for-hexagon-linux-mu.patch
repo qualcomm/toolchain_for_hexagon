@@ -1,0 +1,59 @@
+From 39b9ea0bc55d544317aafceb22645bbdc224919b Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Sun, 1 Mar 2026 13:26:41 -0800
+Subject: [PATCH 09/13] [Hexagon] Enable sanitizer builds for
+ hexagon-linux-musl
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Enable COMPILER_RT_BUILD_SANITIZERS, COMPILER_RT_BUILD_MEMPROF, and
+COMPILER_RT_BUILD_CTX_PROFILE in the hexagon linux compiler-rt cmake
+cache.  MEMPROF and CTX_PROFILE are x86_64-only and will be silently
+skipped, but enabling them keeps the cache consistent with other
+targets.
+
+The sanitizer build requires two additional settings:
+
+- SANITIZER_CXX_ABI must be "libcxxabi" because hexagon-linux-musl does
+  not provide libstdc++.  Without this, the default "libstdc++" is
+  selected for Linux targets, causing link failures:
+
+    undefined symbol: typeinfo for std::type_info
+    undefined symbol: __dynamic_cast
+
+- COMPILER_RT_USE_BUILTINS_LIBRARY must be ON so that hexagon division
+  intrinsics are resolved at link time.  Without this:
+
+    undefined symbol: __hexagon_udivsi3
+    undefined symbol: __hexagon_umodsi3
+    undefined symbol: __hexagon_udivdi3
+---
+ compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
+index 4f1d67dcb38e..49e7a311eb05 100644
+--- a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
++++ b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
+@@ -4,12 +4,12 @@ set(LLVM_DEFAULT_TARGET_TRIPLE hexagon-unknown-linux-musl CACHE STRING "")
+ 
+ set(COMPILER_RT_USE_LLVM_UNWINDER ON CACHE BOOL "")
+ 
+-# Some build failures here, including the inline asm in
+-# `compiler-rt/lib/sanitizer_common/sanitizer_redefine_builtins.h`, so
+-# we can just disable these for now:
+ set(COMPILER_RT_BUILD_BUILTINS OFF CACHE BOOL "")
+-set(COMPILER_RT_BUILD_SANITIZERS OFF CACHE BOOL "")
++set(COMPILER_RT_BUILD_SANITIZERS ON CACHE BOOL "")
+ set(COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
+-set(COMPILER_RT_BUILD_MEMPROF OFF CACHE BOOL "")
+-set(COMPILER_RT_BUILD_CTX_PROFILE OFF CACHE BOOL "")
++set(COMPILER_RT_BUILD_MEMPROF ON CACHE BOOL "")
++set(COMPILER_RT_BUILD_CTX_PROFILE ON CACHE BOOL "")
++
++set(SANITIZER_CXX_ABI "libcxxabi" CACHE STRING "")
++set(COMPILER_RT_USE_BUILTINS_LIBRARY ON CACHE BOOL "")
+ 
+-- 
+2.34.1
+

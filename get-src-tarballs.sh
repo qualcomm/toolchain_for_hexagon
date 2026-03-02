@@ -5,6 +5,19 @@
 
 set -euo pipefail
 
+apply_patches() {
+	local repo_name=$1
+	local tag_name=$2
+	local patch_dir=${SRC_DIR}/patches/${repo_name}/${tag_name}
+	if compgen -G "${patch_dir}/*.patch" > /dev/null 2>&1; then
+		echo "Applying patches from ${patch_dir}"
+		for p in "${patch_dir}"/*.patch; do
+			echo "  Applying $(basename "$p")"
+			patch -p1 < "$p"
+		done
+	fi
+}
+
 get_src_tarballs() {
 	cd ${SRC_DIR}
 	mkdir -p ${MANIFEST_DIR}
@@ -15,6 +28,7 @@ get_src_tarballs() {
 	tar xf ../llvm-project.tar.xz --strip-components=1
 	rm ../llvm-project.tar.xz
 	echo ${LLVM_SRC_URL} > ${MANIFEST_DIR}/llvm-project.txt
+	apply_patches llvm-project llvmorg-${VER}
 	cd -
 
 	wget --quiet ${ELD_SRC_URL} -O eld.tar.xz

@@ -1,0 +1,81 @@
+From fcaf51bcf51b1fd9ca7e76940b0b965d06988467 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Sun, 1 Mar 2026 16:27:47 -0800
+Subject: [PATCH 13/13] [Hexagon] Fix B0 macro conflict between hexagon_types.h
+ and termios.h
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+POSIX termios.h defines `#define B0 0000000` for baud rate 0. This
+conflicts with the B0() member functions in hexagon_types.h vector
+classes, causing compilation failures when both headers are included.
+
+Use #pragma push_macro/pop_macro to save, undefine, and restore B0
+around the class definitions so the header is safe to use alongside
+termios.h without losing the macro afterward.
+
+Fixes #183815
+---
+ clang/lib/Headers/hexagon_types.h             |  7 +++++
+ .../test/Headers/hexagon-types-b0-conflict.c  | 26 +++++++++++++++++++
+ 2 files changed, 33 insertions(+)
+ create mode 100644 clang/test/Headers/hexagon-types-b0-conflict.c
+
+diff --git a/clang/lib/Headers/hexagon_types.h b/clang/lib/Headers/hexagon_types.h
+index 8e73fad4bcd4..2076a2331126 100644
+--- a/clang/lib/Headers/hexagon_types.h
++++ b/clang/lib/Headers/hexagon_types.h
+@@ -11,6 +11,11 @@
+ 
+ #include <hexagon_protos.h>
+ 
++// Save and undefine B0 to avoid conflicts with POSIX termios.h which
++// defines B0 as a macro for baud rate 0.
++#pragma push_macro("B0")
++#undef B0
++
+ /* Hexagon names */
+ #define HEXAGON_Vect HEXAGON_Vect64
+ #define HEXAGON_V_GET_D HEXAGON_V64_GET_D
+@@ -2622,4 +2627,6 @@ typedef struct hexagon_udma_descriptor_type1_s
+     unsigned int dstwidthoffset:16;
+ } hexagon_udma_descriptor_type1_t;
+ 
++#pragma pop_macro("B0")
++
+ #endif /* !HEXAGON_TYPES_H */
+diff --git a/clang/test/Headers/hexagon-types-b0-conflict.c b/clang/test/Headers/hexagon-types-b0-conflict.c
+new file mode 100644
+index 000000000000..ea8c349c7ec6
+--- /dev/null
++++ b/clang/test/Headers/hexagon-types-b0-conflict.c
+@@ -0,0 +1,26 @@
++// REQUIRES: hexagon-registered-target
++
++// Verify that hexagon_types.h can be included after termios.h without
++// B0 macro conflicts, and that B0 is restored afterward.
++
++// RUN: %clang_cc1 -fsyntax-only -internal-isystem %S/../../lib/Headers/ \
++// RUN:   -target-cpu hexagonv68 -triple hexagon-unknown-linux-musl \
++// RUN:   -verify %s
++
++// RUN: %clang_cc1 -fsyntax-only -internal-isystem %S/../../lib/Headers/ \
++// RUN:   -target-cpu hexagonv68 -triple hexagon-unknown-linux-musl \
++// RUN:   -x c++ -verify %s
++
++// expected-no-diagnostics
++
++// Simulate the POSIX termios.h B0 macro definition.
++#define B0 0000000
++
++#include <hexagon_types.h>
++
++// Verify B0 is restored after including hexagon_types.h.
++#ifndef B0
++#error "B0 should be defined after including hexagon_types.h"
++#endif
++
++_Static_assert(B0 == 0, "B0 should still be 0 after including hexagon_types.h");
+-- 
+2.34.1
+

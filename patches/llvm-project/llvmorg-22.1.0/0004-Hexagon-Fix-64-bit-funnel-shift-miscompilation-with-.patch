@@ -1,0 +1,166 @@
+From 210803eb81ee3e413a8c8988e281366a4666c348 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Thu, 26 Feb 2026 16:29:01 -0800
+Subject: [PATCH 04/13] [Hexagon] Fix 64-bit funnel shift miscompilation with
+ register shift amounts
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+64-bit regpair shift amounts are treated as signed 7-bits, so a complement
+shift amount of 64 (when the primary amount is 0) is sign-extended to -64,
+reversing the shift direction and producing incorrect results. This affected
+any 64-bit rotate or funnel shift where the runtime shift amount could be 0
+(making the complement 64) or >= 64.
+
+Fix by decomposing the complement shift as a pre-shift by 1 (immediate)
+followed by a register shift of (63 - m), where m = amt & 63:
+
+  fshl(a, b, amt) = (a << m) | ((b >> 1) >> (63 - m))
+  fshr(a, b, amt) = (b >> m) | ((a << 1) << (63 - m))
+
+Since m is in [0, 63], the complement (63 - m) is also in [0, 63],
+which always fits in the signed 7-bit encoding. When m = 0 the
+pre-shifted operand has its extreme bit cleared, and the register
+shift by 63 zeroes the rest, so the complement term vanishes as
+required.
+---
+ llvm/lib/Target/Hexagon/HexagonPatterns.td |  8 ++++--
+ llvm/test/CodeGen/Hexagon/funnel-shift.ll  | 32 ++++++++++++++--------
+ llvm/test/CodeGen/Hexagon/rotate.ll        | 24 ++++++++++------
+ 3 files changed, 42 insertions(+), 22 deletions(-)
+
+diff --git a/llvm/lib/Target/Hexagon/HexagonPatterns.td b/llvm/lib/Target/Hexagon/HexagonPatterns.td
+index ca2704978df7..bf80a91c4f55 100644
+--- a/llvm/lib/Target/Hexagon/HexagonPatterns.td
++++ b/llvm/lib/Target/Hexagon/HexagonPatterns.td
+@@ -1274,7 +1274,9 @@ def FShl32r: OutPatFrag<(ops node:$Rs, node:$Rt, node:$Ru),
+ def FShl64i: OutPatFrag<(ops node:$Rs, node:$Rt, node:$S),
+   (S2_lsr_i_p_or (S2_asl_i_p $Rs, $S),  $Rt, (Subi<64> $S))>;
+ def FShl64r: OutPatFrag<(ops node:$Rs, node:$Rt, node:$Ru),
+-  (S2_lsr_r_p_or (S2_asl_r_p $Rs, $Ru), $Rt, (A2_subri 64, $Ru))>;
++  (S2_lsr_r_p_or (S2_asl_r_p $Rs, (A2_andir $Ru, 63)),
++                  (S2_lsr_i_p $Rt, 1),
++                  (A2_subri 63, (A2_andir $Ru, 63)))>;
+ 
+ // Combined SDNodeXForm: (Divu8 (Subi<64> $S))
+ def Divu64_8: SDNodeXForm<imm, [{
+@@ -1314,7 +1316,9 @@ def FShr32r: OutPatFrag<(ops node:$Rs, node:$Rt, node:$Ru),
+ def FShr64i: OutPatFrag<(ops node:$Rs, node:$Rt, node:$S),
+   (S2_asl_i_p_or (S2_lsr_i_p $Rt, $S),  $Rs, (Subi<64> $S))>;
+ def FShr64r: OutPatFrag<(ops node:$Rs, node:$Rt, node:$Ru),
+-  (S2_asl_r_p_or (S2_lsr_r_p $Rt, $Ru), $Rs, (A2_subri 64, $Ru))>;
++  (S2_asl_r_p_or (S2_lsr_r_p $Rt, (A2_andir $Ru, 63)),
++                  (S2_asl_i_p $Rs, 1),
++                  (A2_subri 63, (A2_andir $Ru, 63)))>;
+ 
+ // Special cases:
+ let AddedComplexity = 100 in {
+diff --git a/llvm/test/CodeGen/Hexagon/funnel-shift.ll b/llvm/test/CodeGen/Hexagon/funnel-shift.ll
+index 5c318dfb6066..f10b37d09e5e 100644
+--- a/llvm/test/CodeGen/Hexagon/funnel-shift.ll
++++ b/llvm/test/CodeGen/Hexagon/funnel-shift.ll
+@@ -28,9 +28,11 @@ b0:
+ }
+ 
+ ; CHECK-LABEL: f3:
+-; CHECK: r[[R30:[0-9]+]]:[[R31:[0-9]+]] = asl(r1:0,r4)
+-; CHECK: r[[R32:[0-9]+]] = sub(#64,r4)
+-; CHECK: r[[R30]]:[[R31]] |= lsr(r3:2,r[[R32]])
++; CHECK: r[[R33:[0-9]+]] = and(r4,#63)
++; CHECK: r[[R34:[0-9]+]]:[[R35:[0-9]+]] = lsr(r3:2,#1)
++; CHECK: r[[R30:[0-9]+]]:[[R31:[0-9]+]] = asl(r1:0,r[[R33]])
++; CHECK: r[[R33]] = sub(#63,r[[R33]])
++; CHECK: r[[R30]]:[[R31]] |= lsr(r[[R34]]:[[R35]],r[[R33]])
+ define i64 @f3(i64 %a0, i64 %a1, i64 %a2) #1 {
+ b0:
+   %v0 = tail call i64 @llvm.fshl.i64(i64 %a0, i64 %a1, i64 %a2)
+@@ -65,9 +67,11 @@ b0:
+ }
+ 
+ ; CHECK-LABEL: f7:
+-; CHECK: r[[R70:[0-9]+]]:[[R71:[0-9]+]] = lsr(r3:2,r4)
+-; CHECK: r[[R72:[0-9]+]] = sub(#64,r4)
+-; CHECK: r[[R70]]:[[R71]] |= asl(r1:0,r6)
++; CHECK: r[[R73:[0-9]+]] = and(r4,#63)
++; CHECK: r[[R74:[0-9]+]]:[[R75:[0-9]+]] = asl(r1:0,#1)
++; CHECK: r[[R76:[0-9]+]] = sub(#63,r[[R73]])
++; CHECK: r[[R70:[0-9]+]]:[[R71:[0-9]+]] = lsr(r3:2,r[[R73]])
++; CHECK: r[[R70]]:[[R71]] |= asl(r[[R74]]:[[R75]],r[[R76]])
+ define i64 @f7(i64 %a0, i64 %a1, i64 %a2) #1 {
+ b0:
+   %v0 = tail call i64 @llvm.fshr.i64(i64 %a0, i64 %a1, i64 %a2)
+@@ -100,9 +104,11 @@ b0:
+ }
+ 
+ ; CHECK-LABEL: f11:
+-; CHECK: r[[RB0:[0-9]+]]:[[RB1:[0-9]+]] = asl(r1:0,r2)
+-; CHECK: r[[RB2:[0-9]+]] = sub(#64,r2)
+-; CHECK: r[[RB0]]:[[RB1]] |= lsr(r1:0,r[[RB2]])
++; CHECK: r[[RB3:[0-9]+]] = and(r2,#63)
++; CHECK: r[[RB4:[0-9]+]]:[[RB5:[0-9]+]] = lsr(r1:0,#1)
++; CHECK: r[[RB0:[0-9]+]]:[[RB1:[0-9]+]] = asl(r1:0,r[[RB3]])
++; CHECK: r[[RB3]] = sub(#63,r[[RB3]])
++; CHECK: r[[RB0]]:[[RB1]] |= lsr(r[[RB4]]:[[RB5]],r[[RB3]])
+ define i64 @f11(i64 %a0, i64 %a1) #1 {
+ b0:
+   %v0 = tail call i64 @llvm.fshl.i64(i64 %a0, i64 %a0, i64 %a1)
+@@ -135,9 +141,11 @@ b0:
+ }
+ 
+ ; CHECK-LABEL: f15:
+-; CHECK: r[[RF0:[0-9]+]]:[[RF1:[0-9]+]] = lsr(r1:0,r2)
+-; CHECK: r[[RF2:[0-9]+]] = sub(#64,r2)
+-; CHECK: r[[RF0]]:[[RF1]] |= asl(r1:0,r[[RF2]])
++; CHECK: r[[RF3:[0-9]+]] = and(r2,#63)
++; CHECK: r[[RF4:[0-9]+]]:[[RF5:[0-9]+]] = asl(r1:0,#1)
++; CHECK: r[[RF0:[0-9]+]]:[[RF1:[0-9]+]] = lsr(r1:0,r[[RF3]])
++; CHECK: r[[RF3]] = sub(#63,r[[RF3]])
++; CHECK: r[[RF0]]:[[RF1]] |= asl(r[[RF4]]:[[RF5]],r[[RF3]])
+ define i64 @f15(i64 %a0, i64 %a1) #1 {
+ b0:
+   %v0 = tail call i64 @llvm.fshr.i64(i64 %a0, i64 %a0, i64 %a1)
+diff --git a/llvm/test/CodeGen/Hexagon/rotate.ll b/llvm/test/CodeGen/Hexagon/rotate.ll
+index 19af539ed966..d51d62a0bb41 100644
+--- a/llvm/test/CodeGen/Hexagon/rotate.ll
++++ b/llvm/test/CodeGen/Hexagon/rotate.ll
+@@ -60,10 +60,14 @@ b0:
+ }
+ 
+ ; CHECK-LABEL: f5
+-; This is a rotate left by %a1(r2).
+-; CHECK: r[[R50:[0-9]+]]:[[R51:[0-9]+]] = asl(r1:0,r2)
+-; CHECK: r[[R52:[0-9]+]] = sub(#64,r2)
+-; CHECK: r[[R50]]:[[R51]] |= lsr(r1:0,r[[R52]])
++; This is a rotate left by %a1(r2). The complement shift is decomposed as
++; (lsr Rt, #1) >> (63 - m) to avoid producing a shift amount of 64 when m=0,
++; which would be misinterpreted by the Hexagon 7-bit signed shift encoding.
++; CHECK: r[[R53:[0-9]+]] = and(r2,#63)
++; CHECK: r[[R54:[0-9]+]]:[[R55:[0-9]+]] = lsr(r1:0,#1)
++; CHECK: r[[R50:[0-9]+]]:[[R51:[0-9]+]] = asl(r1:0,r[[R53]])
++; CHECK: r[[R53]] = sub(#63,r[[R53]])
++; CHECK: r[[R50]]:[[R51]] |= lsr(r[[R54]]:[[R55]],r[[R53]])
+ define i64 @f5(i64 %a0, i32 %a1) #0 {
+ b0:
+   %v0 = zext i32 %a1 to i64
+@@ -86,10 +90,14 @@ b0:
+ }
+ 
+ ; CHECK-LABEL: f7
+-; This is a rotate right by %a1(r2).
+-; CHECK: r[[R70:[0-9]+]]:[[R71:[0-9]+]] = lsr(r1:0,r2)
+-; CHECK: r[[R72:[0-9]+]] = sub(#64,r2)
+-; CHECK: r[[R70]]:[[R71]] |= asl(r1:0,r[[R72]])
++; This is a rotate right by %a1(r2). The complement shift is decomposed as
++; (asl Rs, #1) << (63 - m) to avoid producing a shift amount of 64 when m=0,
++; which would be misinterpreted by the Hexagon 7-bit signed shift encoding.
++; CHECK: r[[R73:[0-9]+]] = and(r2,#63)
++; CHECK: r[[R74:[0-9]+]]:[[R75:[0-9]+]] = asl(r1:0,#1)
++; CHECK: r[[R70:[0-9]+]]:[[R71:[0-9]+]] = lsr(r1:0,r[[R73]])
++; CHECK: r[[R73]] = sub(#63,r[[R73]])
++; CHECK: r[[R70]]:[[R71]] |= asl(r[[R74]]:[[R75]],r[[R73]])
+ define i64 @f7(i64 %a0, i32 %a1) #0 {
+ b0:
+   %v0 = zext i32 %a1 to i64
+-- 
+2.34.1
+

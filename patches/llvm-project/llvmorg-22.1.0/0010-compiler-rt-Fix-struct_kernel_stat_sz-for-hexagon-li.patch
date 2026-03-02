@@ -1,0 +1,40 @@
+From d5fc686f86ff61a95b17f31fce8bd2188c1e4d84 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Sun, 1 Mar 2026 13:26:51 -0800
+Subject: [PATCH 10/13] [compiler-rt] Fix struct_kernel_stat_sz for
+ hexagon-linux-musl
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Hexagon musl's struct stat is 152 bytes, not 128.  The extra 24 bytes
+come from time64 fields (st_atim, st_mtim, st_ctim as struct timespec)
+alongside the legacy 32-bit __st_atim32/__st_mtim32/__st_ctim32 and
+two __unused padding words, defined in musl/arch/hexagon/bits/stat.h.
+
+The incorrect size causes a static assertion failure when building
+sanitizers:
+
+  sanitizer_platform_limits_posix.cpp: error: static assertion failed
+    struct_kernel_stat_sz == sizeof(struct stat)  (128 != 152)
+
+Update the constant from 128 to 152.
+---
+ .../lib/sanitizer_common/sanitizer_platform_limits_posix.h      | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
+index 05ebee49f2ab..3a21d8ef5ac0 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_platform_limits_posix.h
+@@ -128,7 +128,7 @@ const unsigned struct_kernel_stat64_sz = 104;
+ const unsigned struct_kernel_stat_sz = 128;
+ const unsigned struct_kernel_stat64_sz = 0;  // RISCV64 does not use stat64
+ #    elif defined(__hexagon__)
+-const unsigned struct_kernel_stat_sz = 128;
++const unsigned struct_kernel_stat_sz = 152;
+ const unsigned struct_kernel_stat64_sz = 0;
+ #    elif defined(__loongarch__)
+ const unsigned struct_kernel_stat_sz = 128;
+-- 
+2.34.1
+
