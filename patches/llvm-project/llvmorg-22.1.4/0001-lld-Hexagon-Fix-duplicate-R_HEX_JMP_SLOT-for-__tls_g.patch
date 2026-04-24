@@ -1,0 +1,327 @@
+From b67e3a1ddccc52589bb528a14028c66e323927c9 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Sun, 1 Mar 2026 10:11:37 -0800
+Subject: [PATCH 02/15] [lld][Hexagon] Fix duplicate R_HEX_JMP_SLOT for
+ __tls_get_addr with GD PLT
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+Fix an issue where R_HEX_GD_PLT_B22_PCREL and related relocations could
+create duplicate R_HEX_JMP_SLOT entries for __tls_get_addr. The bug
+occurred because both the generic relocation scanner (via NEEDS_PLT) and
+hexagonTLSSymbolUpdate() independently created PLT entries.
+
+The fix has three parts:
+
+1. In RelocScan::process(), prevent the generic scanner from setting
+   NEEDS_PLT on the TLS symbol for GD PLT relocations, and prevent
+   fromPlt() from converting R_PLT_PC to R_PC for these relocations
+   (since they must always go through __tls_get_addr).
+
+2. Add a Hexagon::postScanRelocations() hook that runs early in
+   elf::postScanRelocations() to rebind GD PLT relocations to
+   __tls_get_addr and set NEEDS_PLT on it. This ensures the PLT entry
+   is created before removeUnusedSyntheticSections() runs.
+
+3. Fix hexagonTLSSymbolUpdate() to skip PLT creation if
+   postScanRelocations already created the entry (auxIdx != 0).
+
+Also update existing test expectations to reflect the reduced number of
+PLT entries (TLS variables no longer get their own spurious PLT entries).
+---
+ lld/ELF/Arch/Hexagon.cpp                     | 40 ++++++++++++++++++++
+ lld/ELF/Relocations.cpp                      | 21 ++++++++--
+ lld/ELF/Target.h                             |  4 ++
+ lld/test/ELF/hexagon-thunk-range-gdplt.s     | 32 +++++-----------
+ lld/test/ELF/hexagon-tls-gd-nonpreemptible.s |  1 -
+ lld/test/ELF/hexagon-tls-gd-plt-direct.s     | 32 ++++++++++++++++
+ lld/test/ELF/hexagon-tls-gd-xform.s          | 17 ++++-----
+ 7 files changed, 111 insertions(+), 36 deletions(-)
+ create mode 100644 lld/test/ELF/hexagon-tls-gd-plt-direct.s
+
+diff --git a/lld/ELF/Arch/Hexagon.cpp b/lld/ELF/Arch/Hexagon.cpp
+index d6495e12668d..7383079b70e0 100644
+--- a/lld/ELF/Arch/Hexagon.cpp
++++ b/lld/ELF/Arch/Hexagon.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "InputFiles.h"
+ #include "OutputSections.h"
++#include "SymbolTable.h"
+ #include "Symbols.h"
+ #include "SyntheticSections.h"
+ #include "Target.h"
+@@ -46,6 +47,7 @@ public:
+   void writePltHeader(uint8_t *buf) const override;
+   void writePlt(uint8_t *buf, const Symbol &sym,
+                 uint64_t pltEntryAddr) const override;
++  void postScanRelocations() override;
+ };
+ } // namespace
+ 
+@@ -583,4 +585,42 @@ void elf::mergeHexagonAttributesSections(Ctx &ctx) {
+                            mergeAttributesSection(ctx, sections));
+ }
+ 
++static bool isGDPLT(RelType type) {
++  switch (type) {
++  case R_HEX_GD_PLT_B22_PCREL:
++  case R_HEX_GD_PLT_B22_PCREL_X:
++  case R_HEX_GD_PLT_B32_PCREL_X:
++    return true;
++  default:
++    return false;
++  }
++}
++
++void Hexagon::postScanRelocations() {
++  Symbol *ta = nullptr;
++
++  // Scan for R_HEX_GD_PLT_* relocations (classified as R_PLT_PC by
++  // getRelExpr) and rebind them to __tls_get_addr.  GD PLT relocations
++  // always resolve to __tls_get_addr, even for non-preemptible symbols,
++  // so we must not let the generic machinery optimise them to R_PC
++  // (direct call).  This runs single-threaded after all relocation
++  // scanning is complete, so it is safe to modify the symbol table.
++  for (ELFFileBase *f : ctx.objectFiles)
++    for (InputSectionBase *s : f->getSections())
++      if (auto *isec = dyn_cast_or_null<InputSection>(s))
++        if (isec->isLive())
++          for (Relocation &rel : isec->relocs())
++            if (rel.expr == R_PLT_PC && isGDPLT(rel.type)) {
++              if (!ta) {
++                ta = ctx.symtab->addSymbol(
++                    Undefined{ctx.internalFile, "__tls_get_addr", STB_GLOBAL,
++                              STV_DEFAULT, STT_NOTYPE});
++                ta->isPreemptible = true;
++                ta->setFlags(NEEDS_PLT);
++                ctx.partitions[0].dynSymTab->addSymbol(ta);
++              }
++              rel.sym = ta;
++            }
++}
++
+ void elf::setHexagonTargetInfo(Ctx &ctx) { ctx.target.reset(new Hexagon(ctx)); }
+diff --git a/lld/ELF/Relocations.cpp b/lld/ELF/Relocations.cpp
+index 998471f0784e..ddcbdedb9e63 100644
+--- a/lld/ELF/Relocations.cpp
++++ b/lld/ELF/Relocations.cpp
+@@ -922,6 +922,8 @@ void RelocScan::process(RelExpr expr, RelType type, uint64_t offset,
+         addend &= ~0x8000;
+       // R_HEX_GD_PLT_B22_PCREL (call a@GDPLT) is transformed into
+       // call __tls_get_addr even if the symbol is non-preemptible.
++      // Don't optimise to R_PC here; postScanRelocations will rebind
++      // the relocation to __tls_get_addr.
+       if (!(ctx.arg.emachine == EM_HEXAGON &&
+             (type == R_HEX_GD_PLT_B22_PCREL ||
+              type == R_HEX_GD_PLT_B22_PCREL_X ||
+@@ -968,7 +970,13 @@ void RelocScan::process(RelExpr expr, RelType type, uint64_t offset,
+         sym.setFlags(NEEDS_GOT | NEEDS_GOT_NONAUTH);
+     }
+   } else if (needsPlt(expr)) {
+-    sym.setFlags(NEEDS_PLT);
++    // Don't create a PLT entry for the TLS symbol itself on Hexagon GD PLT
++    // relocations.  postScanRelocations will rebind these to __tls_get_addr
++    // and create the PLT entry there.
++    if (!(ctx.arg.emachine == EM_HEXAGON &&
++          (type == R_HEX_GD_PLT_B22_PCREL || type == R_HEX_GD_PLT_B22_PCREL_X ||
++           type == R_HEX_GD_PLT_B32_PCREL_X)))
++      sym.setFlags(NEEDS_PLT);
+   } else if (LLVM_UNLIKELY(isIfunc)) {
+     sym.setFlags(HAS_DIRECT_RELOC);
+   }
+@@ -1518,6 +1526,8 @@ static bool handleNonPreemptibleIfunc(Ctx &ctx, Symbol &sym, uint16_t flags) {
+ }
+ 
+ void elf::postScanRelocations(Ctx &ctx) {
++  ctx.target->postScanRelocations();
++
+   auto fn = [&](Symbol &sym) {
+     auto flags = sym.flags.load(std::memory_order_relaxed);
+     if (handleNonPreemptibleIfunc(ctx, sym, flags))
+@@ -2232,10 +2242,13 @@ void elf::hexagonTLSSymbolUpdate(Ctx &ctx) {
+           for (Relocation &rel : isec->relocs())
+             if (rel.sym->type == llvm::ELF::STT_TLS && rel.expr == R_PLT_PC) {
+               if (needEntry) {
+-                if (sym->auxIdx == 0)
++                // If postScanRelocations already created a PLT entry for
++                // __tls_get_addr (auxIdx != 0), skip creating another one.
++                if (sym->auxIdx == 0) {
+                   sym->allocateAux(ctx);
+-                addPltEntry(ctx, *ctx.in.plt, *ctx.in.gotPlt, *ctx.in.relaPlt,
+-                            ctx.target->pltRel, *sym);
++                  addPltEntry(ctx, *ctx.in.plt, *ctx.in.gotPlt, *ctx.in.relaPlt,
++                              ctx.target->pltRel, *sym);
++                }
+                 needEntry = false;
+               }
+               rel.sym = sym;
+diff --git a/lld/ELF/Target.h b/lld/ELF/Target.h
+index 30fcb02b43fb..aff0c13a8d50 100644
+--- a/lld/ELF/Target.h
++++ b/lld/ELF/Target.h
+@@ -117,6 +117,10 @@ public:
+                                  JumpModType val) const {}
+   virtual void applyBranchToBranchOpt() const {}
+ 
++  // Called after relocation scanning, before symbol flag processing.
++  // Targets may override this to rebind relocations or set additional flags.
++  virtual void postScanRelocations() {}
++
+   virtual ~TargetInfo();
+ 
+   // This deletes a jump insn at the end of the section if it is a fall thru to
+diff --git a/lld/test/ELF/hexagon-thunk-range-gdplt.s b/lld/test/ELF/hexagon-thunk-range-gdplt.s
+index 77fd0e575456..1660bde3ceab 100644
+--- a/lld/test/ELF/hexagon-thunk-range-gdplt.s
++++ b/lld/test/ELF/hexagon-thunk-range-gdplt.s
+@@ -48,27 +48,27 @@ tls_var_distant:
+ 
+ # CHECK: Disassembly of section .text:
+ # CHECK:     <_start>:
+-# CHECK-NEXT:   102d4:  { immext(#0x420100)
+-# CHECK-NEXT:      r2 = add(pc,##0x420130) }
++# CHECK-NEXT:   102b0:  { immext(#0x420100)
++# CHECK-NEXT:      r2 = add(pc,##0x420104) }
+ # CHECK-NEXT:    { immext(#0xfffeffc0)
+ # CHECK-NEXT:      r0 = add(r2,##-0x10018) }
+-# CHECK-NEXT:    { call 0x410360 <__tls_get_addr@plt> }
++# CHECK-NEXT:    { call 0x410310 <__tls_get_addr@plt> }
+ # CHECK-NEXT:    { immext(#0xfffeffc0)
+ # CHECK-NEXT:      r0 = add(r2,##-0x10010) }
+-# CHECK-NEXT:    { call 0x410360 <__tls_get_addr@plt> }
++# CHECK-NEXT:    { call 0x410310 <__tls_get_addr@plt> }
+ # CHECK-NEXT:    { jumpr r31 }
+ 
+ # CHECK:     <more_code>:
+-# CHECK-NEXT:   4102f8:  { immext(#0xfffeffc0)
++# CHECK-NEXT:   4102d4:  { immext(#0xfffeffc0)
+ # CHECK-NEXT:      r0 = add(r2,##-0x10008) }
+-# CHECK-NEXT:    { call 0x410360 <__tls_get_addr@plt> }
++# CHECK-NEXT:    { call 0x410310 <__tls_get_addr@plt> }
+ # CHECK-NEXT:    { jumpr r31 }
+ 
+ ## Verify PLT entries are created for TLS
+ # CHECK: Disassembly of section .plt:
+ # CHECK:      <.plt>:
+-# CHECK-NEXT:   410310:  { immext(#0x200c0)
+-# CHECK-NEXT:      r28 = add(pc,##0x200f4) }
++# CHECK-NEXT:   4102f0:  { immext(#0x200c0)
++# CHECK-NEXT:      r28 = add(pc,##0x200c4) }
+ # CHECK-NEXT:    { r14 -= add(r28,#0x10)
+ # CHECK-NEXT:      r15 = memw(r28+#0x8)
+ # CHECK-NEXT:      r28 = memw(r28+#0x4) }
+@@ -76,20 +76,8 @@ tls_var_distant:
+ # CHECK-NEXT:      jumpr r28 }
+ # CHECK-NEXT:    { trap0(#0xdb) }
+ 
+-# CHECK:      <tls_var_far@plt>:
+-# CHECK-NEXT:   410340:  { immext(#0x200c0)
+-# CHECK-NEXT:      r14 = add(pc,##0x200d8) }
+-# CHECK-NEXT:    { r28 = memw(r14+#0x0) }
+-# CHECK-NEXT:    { jumpr r28 }
+-
+-# CHECK:      <tls_var_distant@plt>:
+-# CHECK-NEXT:   410350:  { immext(#0x200c0)
+-# CHECK-NEXT:      r14 = add(pc,##0x200cc) }
+-# CHECK-NEXT:    { r28 = memw(r14+#0x0) }
+-# CHECK-NEXT:    { jumpr r28 }
+-
+ # CHECK:      <__tls_get_addr@plt>:
+-# CHECK-NEXT:   410360: { immext(#0x200c0)
+-# CHECK-NEXT:      r14 = add(pc,##0x200c0) }
++# CHECK-NEXT:   410310: { immext(#0x20080)
++# CHECK-NEXT:      r14 = add(pc,##0x200b4) }
+ # CHECK-NEXT:    { r28 = memw(r14+#0x0) }
+ # CHECK-NEXT:    { jumpr r28 }
+diff --git a/lld/test/ELF/hexagon-tls-gd-nonpreemptible.s b/lld/test/ELF/hexagon-tls-gd-nonpreemptible.s
+index ff5e6dbaac71..ca84865e1dba 100644
+--- a/lld/test/ELF/hexagon-tls-gd-nonpreemptible.s
++++ b/lld/test/ELF/hexagon-tls-gd-nonpreemptible.s
+@@ -14,7 +14,6 @@
+ .type _start, @function
+ 
+ # RELOC:      Section ({{.*}}) .rela.plt {
+-# RELOC-NEXT:   R_HEX_JMP_SLOT - 0x0
+ # RELOC-NEXT:   R_HEX_JMP_SLOT __tls_get_addr 0x0
+ # RELOC-NEXT: }
+ 
+diff --git a/lld/test/ELF/hexagon-tls-gd-plt-direct.s b/lld/test/ELF/hexagon-tls-gd-plt-direct.s
+new file mode 100644
+index 000000000000..d6a9c1b02191
+--- /dev/null
++++ b/lld/test/ELF/hexagon-tls-gd-plt-direct.s
+@@ -0,0 +1,32 @@
++# REQUIRES: hexagon
++# RUN: llvm-mc -filetype=obj -triple=hexagon-unknown-elf %s -o %t.o
++# RUN: ld.lld -shared %t.o -o %t.so
++# RUN: llvm-readobj -r %t.so | FileCheck %s
++
++## This test verifies that lld handles the case where there's a direct GD_PLT
++## relocation against __tls_get_addr. Previously this would create duplicate
++## R_HEX_JMP_SLOT relocations for __tls_get_addr. Now only one is created.
++
++# CHECK:      Section ({{.*}}) .rela.dyn {
++# CHECK-NEXT:   R_HEX_DTPMOD_32 foo 0x0
++# CHECK-NEXT:   R_HEX_DTPREL_32 foo 0x0
++# CHECK-NEXT: }
++# CHECK:      Section ({{.*}}) .rela.plt {
++# CHECK-NEXT:   R_HEX_JMP_SLOT __tls_get_addr 0x0
++# CHECK-NEXT: }
++
++.globl _start
++.type _start, @function
++_start:
++  ## Use GD_GOT to set up TLS GOT entry for foo
++  r2 = add(pc, ##_GLOBAL_OFFSET_TABLE_@PCREL)
++  r0 = add(r2, ##foo@GDGOT)
++  ## This creates GD_PLT relocations against __tls_get_addr directly
++  call ##__tls_get_addr@GDPLT
++  jumpr r31
++
++.section .tdata,"awT",@progbits
++.globl foo
++.type foo, @object
++foo:
++  .word 0x11111111
+diff --git a/lld/test/ELF/hexagon-tls-gd-xform.s b/lld/test/ELF/hexagon-tls-gd-xform.s
+index ade54e8a16fa..a87ec4bd61cd 100644
+--- a/lld/test/ELF/hexagon-tls-gd-xform.s
++++ b/lld/test/ELF/hexagon-tls-gd-xform.s
+@@ -18,25 +18,24 @@
+ _start:
+ .ifdef GDPLT
+                         call x@gdplt
+-# CHECK_GDPLT:  101ec: { call 0x10220 <__tls_get_addr@plt> }
++# CHECK_GDPLT:  101e0: { call 0x10210 <__tls_get_addr@plt> }
+ .else
+                   call x
+ # CHECK:  101b8: { call 0x101e0 <x@plt> }
+ .endif
+ 
+-# CHECK_GDPLT:        10220: { immext(#0x20040)
+-# CHECK_GDPLT-NEXT:   10224:   r14 = add(pc,##0x2007c) }
+-# CHECK_GDPLT-NEXT:   10228: { r28 = memw(r14+#0x0) }
+-# CHECK_GDPLT-NEXT:   1022c: { jumpr r28 }
++# CHECK_GDPLT:        10210: { immext(#0x20040)
++# CHECK_GDPLT-NEXT:   10214:   r14 = add(pc,##0x20078) }
++# CHECK_GDPLT-NEXT:   10218: { r28 = memw(r14+#0x0) }
++# CHECK_GDPLT-NEXT:   1021c: { jumpr r28 }
+ 
+ 
+-## Looking at the above check, 0x10220+0x2007c must equal the entry for
+-##  __tls_get_addr, 0x3029C
++## Looking at the above check, 0x10210+0x20078 must equal the entry for
++##  __tls_get_addr, 0x30288
+ 
+ # RELA_GDPLT: Relocations [
+ # RELA_GDPLT-NEXT:  Section (5) .rela.plt {
+-# RELA_GDPLT-NEXT:    0x30298 R_HEX_JMP_SLOT x 0x0
+-# RELA_GDPLT-NEXT:    0x3029C R_HEX_JMP_SLOT __tls_get_addr 0x0
++# RELA_GDPLT-NEXT:    0x30288 R_HEX_JMP_SLOT __tls_get_addr 0x0
+ # RELA_GDPLT-NEXT:  }
+ # RELA_GDPLT-NEXT:]
+ 
+-- 
+2.34.1
+
