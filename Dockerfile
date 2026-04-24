@@ -57,12 +57,12 @@ RUN apt update && \
 
 # From env.sh
 ARG QEMU_REPO=https://github.com/quic/qemu
-ARG QEMU_REF=hexagon-sysemu-01-mar-2026
+ARG QEMU_REF=hexagon-sysemu-23-apr-2026
 
 ARG ARTIFACT_BASE
 ARG ARTIFACT_TAG
 
-ENV VER 22.1.0
+ENV VER 22.1.4
 ENV TOOLCHAIN_INSTALL /usr/local/clang+llvm-${VER}-cross-hexagon-unknown-linux-musl/
 ENV ROOT_INSTALL /usr/local/hexagon-unknown-linux-musl-rootfs
 ENV MAKE_TARBALLS 1
@@ -70,7 +70,7 @@ ENV MAKE_TARBALLS 1
 ENV LLVM_SRC_URL https://github.com/llvm/llvm-project/archive/llvmorg-${VER}.tar.gz
 ENV ELD_SRC_URL https://github.com/qualcomm/eld/archive/v22.1.0-rc3.tar.gz
 ENV LLVM_TESTS_SRC_URL https://github.com/llvm/llvm-test-suite/archive/llvmorg-${VER}.tar.gz
-ENV MUSL_SRC_URL https://github.com/quic/musl/archive/hexagon-v1.2.4-mar-2026.tar.gz
+ENV MUSL_SRC_URL https://github.com/quic/musl/archive/hexagon-v1.2.4-apr-2026.tar.gz
 ENV LINUX_SRC_URL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.5.tar.xz
 ENV BUSYBOX_SRC_URL https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 ENV PICOLIBC_SRC_URL https://github.com/picolibc/picolibc/releases/download/1.8.11/picolibc-1.8.11.tar.xz
@@ -80,6 +80,7 @@ ADD patches /root/hexagon-toolchain/patches
 ADD test-suite-patches /root/hexagon-toolchain/test-suite-patches
 ADD get-src-tarballs.sh /root/hexagon-toolchain/get-src-tarballs.sh
 ADD *.cmake /root/hexagon-toolchain/
+ADD cmake/caches /root/hexagon-toolchain/cmake/caches/
 ADD hexagon-unknown-none-elf.cfg /root/hexagon-toolchain/
 RUN cd /root/hexagon-toolchain && ./get-src-tarballs.sh ${PWD} ${TOOLCHAIN_INSTALL}/manifest
 
@@ -89,7 +90,9 @@ ENV IN_CONTAINER 1
 
 ENV CROSS_TRIPLES ""
 ENV CROSS_TRIPLES_PIC ""
-ENV CROSS_TRIPLES_DYLIB "x86_64-linux-musl aarch64-linux-musl aarch64-windows-gnu x86_64-windows-gnu aarch64-macos"
+# Windows/macOS zig cross-builds disabled: LLVMSupport.a missing platform
+# implementations causes link failures (llvm-config.exe, llvm-ar.exe, etc.)
+ENV CROSS_TRIPLES_DYLIB "x86_64-linux-musl aarch64-linux-musl"
 ADD build-toolchain.sh /root/hexagon-toolchain/build-toolchain.sh
 RUN cd /root/hexagon-toolchain && ./build-toolchain.sh ${ARTIFACT_TAG}
 

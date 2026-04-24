@@ -311,6 +311,7 @@ build_qemu() {
 	                  --disable-glusterfs \
 	                  --disable-rbd \
 		--target-list=hexagon-softmmu,hexagon-linux-user --prefix=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu \
+		--extra-cflags="-Wno-error=misleading-indentation" \
 
 #	--cc=clang \
 #	--cross-prefix=hexagon-unknown-linux-musl-
@@ -467,6 +468,11 @@ python3 --version
 
 build_llvm_clang
 
+# Create sysroot symlink in build tree so the build-tree clang can
+# resolve DEFAULT_SYSROOT for partial-link steps during builtins/runtimes.
+mkdir -p ${BASE}/obj_llvm/target
+ln -sfn "${HEX_SYSROOT}" ${BASE}/obj_llvm/target/hexagon-unknown-linux-musl
+
 CROSS_ALL="${CROSS_TRIPLES} ${CROSS_TRIPLES_PIC} ${CROSS_TRIPLES_DYLIB}"
 for t in ${CROSS_TRIPLES}
 do
@@ -486,6 +492,13 @@ build_kernel_headers
 build_musl_headers
 build_builtins
 build_musl
+
+# Create stub archives for libraries being built by runtimes.
+# The Hexagon driver unconditionally links -lc++ -lc++abi -lunwind;
+# stubs prevent link failures during compiler-rt partial-link steps.
+for lib in c++ c++abi unwind; do
+    ${TOOLCHAIN_BIN}/llvm-ar rc ${HEX_TOOLS_TARGET_BASE}/lib/lib${lib}.a
+done
 
 build_runtimes
 #build_sanitizers
