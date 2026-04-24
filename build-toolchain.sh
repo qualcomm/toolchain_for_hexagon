@@ -23,50 +23,52 @@ build_llvm_clang_cross() {
 	if [[ "${triple}" =~ "macos" ]]; then
 		EXTRA="${EXTRA} -DCMAKE_TOOLCHAIN_FILE=${PWD}/macos-toolchain.cmake -C macos-target.cmake"
 	fi
-	if [[ "${HOST_CLANG_VER-}" -ne "" ]]; then
-		EXTRA="${EXTRA-} -DHOST_CLANG_VER=${HOST_CLANG_VER}"
-	fi
 	if [[ "${IN_CONTAINER-0}" -ne 1 ]]; then
 		CMAKE_CCACHE="-DLLVM_CCACHE_BUILD:BOOL=ON"
 	fi
-	if [[ "${pic}" =~ "ON" ]]; then
-		ELD="-DLLVM_EXTERNAL_PROJECTS=eld \
-		     -DLLVM_EXTERNAL_ELD_SOURCE_DIR=${PWD}/llvm-project/eld \
-		     -DELD_ENABLE_SYMBOL_VERSIONING:BOOL=ON \
-		     "
-	fi
-	if [[ "${dylib}" =~ "ON" ]]; then
-		ELD=""
-		DYLIB="-C ./llvm-project/clang/cmake/caches/hexagon-unknown-linux-musl-clang-dylib.cmake"
+	if [[ -n "${LLVM_PARALLEL_LINK_JOBS-}" ]]; then
+		CMAKE_LINK_JOBS="-DLLVM_PARALLEL_LINK_JOBS=${LLVM_PARALLEL_LINK_JOBS}"
 	fi
 
+	# Build distribution components list — ELD is skipped for cross-builds
+	# (LLD is sufficient); only the native build includes ld.eld.
+	DIST_COMPONENTS=(
+		clang clang-resource-headers lld LTO
+		llvm-ar llvm-config llvm-cov llvm-cxxfilt llvm-dwarfdump
+		llvm-nm llvm-objcopy llvm-objdump llvm-profdata
+		llvm-ranlib llvm-readelf llvm-readobj
+		llvm-size llvm-strip llvm-symbolizer
+	)
+	DYLIB=""
+	if [[ "${dylib}" == "ON" ]]; then
+		DYLIB="-C ./cmake/caches/hexagon-stage0-dylib.cmake"
+		DIST_COMPONENTS+=(LLVM)
+	fi
+	DIST_LIST=$(IFS=';'; echo "${DIST_COMPONENTS[*]}")
 
 	CC="zig cc --target=${triple}" \
 	ASM="zig cc --target=${triple}" \
 	CXX="zig c++ --target=${triple}" \
 		cmake -G Ninja \
-		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX:PATH=${TOOLCHAIN_INSTALL}/${triple}/ \
 		${CMAKE_CCACHE-} \
+		${CMAKE_LINK_JOBS-} \
 		-DLLVM_ENABLE_ASSERTIONS:BOOL=ON \
 		-DLLVM_HOST_TRIPLE=${triple} \
 		-DLLVM_TOOL_DSYMUTIL_BUILD:BOOL=OFF \
-		-DLLVM_INCLUDE_TESTS:BOOL=OFF \
-		-DLLVM_INCLUDE_EXAMPLES:BOOL=OFF \
-		-DLLVM_ENABLE_PIC:BOOL="${pic}" \
 		-DLIBCLANG_BUILD_STATIC:BOOL=ON \
-		${ELD-} \
 		-DLLVM_NATIVE_TOOL_DIR=${PWD}/obj_llvm/bin \
 		-DCMAKE_BUILD_WITH_INSTALL_RPATH:BOOL=ON \
 		-DCMAKE_CROSSCOMPILING:BOOL=ON \
 		${EXTRA} \
-		-C ./llvm-tools.cmake \
-		${DYLIB-} \
-		-C ./llvm-project/clang/cmake/caches/hexagon-unknown-linux-musl-clang.cmake \
-		-C ./llvm-project/clang/cmake/caches/hexagon-unknown-linux-musl-clang-cross.cmake \
+		${DYLIB} \
+		-C ./cmake/caches/hexagon-stage0.cmake \
+		-C ./cmake/caches/hexagon-stage0-cross.cmake \
+		-DLLVM_ENABLE_PIC:BOOL="${pic}" \
+		-DLLVM_DISTRIBUTION_COMPONENTS="${DIST_LIST}" \
 		-B ./obj_llvm_${triple} \
 		-S ./llvm-project/llvm
-	cmake --build ./obj_llvm_${triple} -- -v all install
+	cmake --build ./obj_llvm_${triple} --target install-distribution
 	if [[ "${IN_CONTAINER-0}" -eq 1 ]]; then
 		rm -rf ./obj_llvm_${triple}
 	fi
@@ -79,24 +81,40 @@ build_llvm_clang() {
 	if [[ "${IN_CONTAINER-0}" -ne 1 ]]; then
 		CMAKE_CCACHE="-DLLVM_CCACHE_BUILD:BOOL=ON"
 	fi
+	if [[ -n "${LLVM_PARALLEL_LINK_JOBS-}" ]]; then
+		CMAKE_LINK_JOBS="-DLLVM_PARALLEL_LINK_JOBS=${LLVM_PARALLEL_LINK_JOBS}"
+	fi
 
+	# Conditionally add ELD as an LLVM external project.
+	ELD=""
+	if [[ -d ./llvm-project/eld ]]; then
+		ELD="-DLLVM_EXTERNAL_PROJECTS=eld \
+		     -DLLVM_EXTERNAL_ELD_SOURCE_DIR=${PWD}/llvm-project/eld \
+		     -DELD_ENABLE_SYMBOL_VERSIONING:BOOL=ON"
+	fi
 
 	CC=clang CXX=clang++ cmake -G Ninja \
-		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX:PATH=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu/ \
 		${CMAKE_CCACHE-} \
+		${CMAKE_LINK_JOBS-} \
 		-DLLVM_ENABLE_LLD:BOOL=ON \
 		-DLLVM_ENABLE_LIBCXX:BOOL=ON \
 		-DLLVM_ENABLE_ASSERTIONS:BOOL=ON \
-		-DLLVM_ENABLE_PIC:BOOL=ON \
-		-DLLVM_EXTERNAL_PROJECTS=eld \
-		-DLLVM_EXTERNAL_ELD_SOURCE_DIR=${PWD}/llvm-project/eld \
-		-DELD_ENABLE_SYMBOL_VERSIONING:BOOL=ON \
-		-C ./llvm-project/clang/cmake/caches/hexagon-unknown-linux-musl-clang.cmake \
-		-C ./llvm-project/clang/cmake/caches/hexagon-unknown-linux-musl-clang-cross.cmake \
+		${ELD} \
+		-C ./cmake/caches/hexagon-stage0.cmake \
+		-C ./cmake/caches/hexagon-stage0-cross.cmake \
 		-B ./obj_llvm \
 		-S ./llvm-project/llvm
-	cmake --build ./obj_llvm -- -v all install
+	cmake --build ./obj_llvm --target install-distribution
+
+	# ELD external project doesn't participate in install-distribution;
+	# install-ld.eld handles both the ld.eld binary and libLW shared library.
+	# Note: ELD's libLW uses NO_EXPORT (via patch) to stay out of
+	# LLVMExports.cmake, avoiding conflicts with baremetal builtins sub-builds.
+	if [[ -n "${ELD}" ]]; then
+		cmake --build ./obj_llvm --target install-ld.eld
+	fi
+
 	DEST_BIN=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu/bin
 	add_symlinks ${DEST_BIN}
 }
@@ -116,7 +134,9 @@ add_symlinks() {
 		ln -sf --relative ${linkdir}/llvm-ranlib ${linkdir}/${triple}-ranlib
 		ln -sf --relative ${linkdir}/llvm-config ${linkdir}/${triple}-llvm-config
 		ln -sf --relative ${linkdir}/ld.lld ${linkdir}/${triple}-ld.lld
-		ln -sf --relative ${linkdir}/ld.eld ${linkdir}/${triple}-ld.eld
+		if [[ -e ${linkdir}/ld.eld ]]; then
+			ln -sf --relative ${linkdir}/ld.eld ${linkdir}/${triple}-ld.eld
+		fi
 	done
 
 	for triple in hexagon-unknown-linux-musl hexagon-unknown-none-elf hexagon-linux-musl hexagon-none-elf hexagon
@@ -137,30 +157,27 @@ add_multilib_symlinks() {
 	cd -
 }
 
-build_clang_rt_builtins() {
+build_builtins() {
 	cd ${BASE}
 
-	PATH=${TOOLCHAIN_BIN}:${PATH} \
-		cmake -G Ninja \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DLLVM_CMAKE_DIR:PATH=${TOOLCHAIN_LIB} \
-		-DCOMPILER_RT_EMULATOR:STRING="${TOOLCHAIN_BIN}/qemu_wrapper.sh" \
-		-DCMAKE_INSTALL_PREFIX:PATH=${HEX_TOOLS_TARGET_BASE} \
-		-DCMAKE_CROSSCOMPILING:BOOL=ON \
-		-DCOMPILER_RT_OS_DIR= \
-		-DCAN_TARGET_hexagon=1 \
-		-DCAN_TARGET_${ARCH}=0 \
-		-DCMAKE_C_COMPILER_FORCED:BOOL=ON \
-		-DCMAKE_CXX_COMPILER_FORCED:BOOL=ON \
-		-C ./llvm-project/compiler-rt/cmake/caches/hexagon-linux-builtins.cmake \
-		-C ./hexagon-linux-cross.cmake \
-		-B ./obj_clang_rt \
-		-S ./llvm-project/compiler-rt
+	# Builtins are not part of install-distribution because the Linux
+	# builtins (hexagon-unknown-linux-musl) need musl headers (<stdlib.h>).
+	# Build after musl headers are installed.
+	cmake --build ./obj_llvm --target install-builtins
 
-	cmake --build ./obj_clang_rt -- -v install-builtins
+	# Hexagon driver passes -lclang_rt.builtins-hexagon (old-style name).
+	# Create a compatibility symlink in the sysroot lib dir so the linker
+	# finds builtins during runtimes build and user builds.
+	RESOURCE_DIR=$(${TOOLCHAIN_BIN}/clang --print-resource-dir)
+	mkdir -p ${HEX_TOOLS_TARGET_BASE}/lib
+	ln -sf --relative "${RESOURCE_DIR}/lib/hexagon-unknown-linux-musl/libclang_rt.builtins.a" \
+		${HEX_TOOLS_TARGET_BASE}/lib/libclang_rt.builtins-hexagon.a
 }
 
-
+build_runtimes() {
+	cd ${BASE}
+	cmake --build ./obj_llvm --target install-runtimes-hexagon-unknown-linux-musl
+}
 
 config_kernel() {
 	cd ${BASE}
@@ -196,9 +213,10 @@ build_musl_headers() {
 	cd musl
 	make clean
 
+	RESOURCE_DIR=$(${TOOLCHAIN_BIN}/clang --print-resource-dir)
 	CC=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu/bin/hexagon-unknown-linux-musl-clang \
 		CROSS_COMPILE=${CC_PREFIX} \
-		LIBCC=${HEX_TOOLS_TARGET_BASE}/lib/libclang_rt.builtins-hexagon.a \
+		LIBCC="${RESOURCE_DIR}/lib/hexagon-unknown-linux-musl/libclang_rt.builtins.a" \
 		CROSS_CFLAGS="-G0 -O0 -mv68 -fno-builtin --target=hexagon-unknown-linux-musl" \
 		./configure --target=hexagon --prefix=${HEX_TOOLS_TARGET_BASE}
 	PATH=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu/bin/:$PATH make install-headers
@@ -216,12 +234,13 @@ build_musl() {
 	cd musl
 	make clean
 
+	RESOURCE_DIR=$(${TOOLCHAIN_BIN}/clang --print-resource-dir)
 	CROSS_COMPILE=${CC_PREFIX} \
 		AR=llvm-ar \
 		RANLIB=llvm-ranlib \
 		STRIP=llvm-strip \
 		CC=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu/bin/hexagon-unknown-linux-musl-clang \
-		LIBCC=${HEX_TOOLS_TARGET_BASE}/lib/libclang_rt.builtins-hexagon.a \
+		LIBCC="${RESOURCE_DIR}/lib/hexagon-unknown-linux-musl/libclang_rt.builtins.a" \
 		CFLAGS="${MUSL_CFLAGS}" \
 		./configure --target=hexagon --prefix=${HEX_TOOLS_TARGET_BASE}
 	PATH=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu/bin/:$PATH make -j install
@@ -233,28 +252,6 @@ build_musl() {
 	ln -sf ../usr/lib/ld-musl-hexagon.so.1
 }
 
-
-build_libs() {
-	cd ${BASE}
-
-	PATH=${TOOLCHAIN_BIN}:${PATH} \
-		cmake -G Ninja \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DLLVM_CMAKE_DIR:PATH=${TOOLCHAIN_LIB} \
-		-DCMAKE_INSTALL_PREFIX:PATH=${HEX_TOOLS_TARGET_BASE} \
-		-DCMAKE_CROSSCOMPILING:BOOL=ON \
-		-DCMAKE_CXX_COMPILER_FORCED:BOOL=ON \
-		-C ./hexagon-linux-cross.cmake \
-		-C ./llvm-project/libcxx/cmake/caches/hexagon-linux-runtimes.cmake \
-		-C ./llvm-project/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake \
-		-DCOMPILER_RT_OS_DIR= \
-		-B ./obj_libs \
-		-S ./llvm-project/runtimes
-
-	PATH=${TOOLCHAIN_BIN}:${PATH} \
-	cmake --build ./obj_libs -- -v \
-		install
-}
 
 build_sanitizers() {
 	cd ${BASE}
@@ -336,25 +333,6 @@ EOF
 	chmod +x ./qemu_wrapper.sh ${TOOLCHAIN_BIN}/qemu_wrapper.sh
 }
 
-build_clang_rt_builtins_baremetal() {
-	cd ${BASE}
-
-	PATH=${TOOLCHAIN_BIN}:${PATH} \
-		cmake -G Ninja \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DLLVM_CMAKE_DIR:PATH=${TOOLCHAIN_LIB} \
-		-DCMAKE_INSTALL_PREFIX:PATH=${HEX_PICOLIBC_BASE} \
-		-DCMAKE_CROSSCOMPILING:BOOL=ON \
-		-DCOMPILER_RT_OS_DIR= \
-		-DCMAKE_C_COMPILER:STRING=${TOOLCHAIN_BIN}/clang \
-		-DCMAKE_ASM_COMPILER:STRING=${TOOLCHAIN_BIN}/clang \
-		-C ./llvm-project/compiler-rt/cmake/caches/hexagon-builtins-baremetal.cmake \
-		-B ./obj_clang_rt_baremetal \
-		-S ./llvm-project/compiler-rt
-
-	cmake --build ./obj_clang_rt_baremetal -- -v install-builtins
-}
-
 build_picolibc() {
 	cd ${BASE}
 
@@ -373,7 +351,7 @@ build_picolibc() {
 		cat > picolibc-hexagon-${archver}.txt <<CROSSEOF
 [binaries]
 c = ['${TOOLCHAIN_BIN}/clang', '--target=hexagon-unknown-none-elf', '-m${archver}', '-fno-pic', '-fno-PIE', '-static', '-nostdlib', '-fuse-init-array', '-G0']
-c_ld = '${TOOLCHAIN_BIN}/ld.eld'
+c_ld = '${TOOLCHAIN_BIN}/ld.lld'
 ar = '${TOOLCHAIN_BIN}/llvm-ar'
 as = '${TOOLCHAIN_BIN}/clang'
 nm = '${TOOLCHAIN_BIN}/llvm-nm'
@@ -400,7 +378,8 @@ CROSSEOF
 		# Place builtins into per-arch lib dir where the driver will search
 		ARCHLIB=${HEX_PICOLIBC_BASE}/lib/${archver}/G0
 		mkdir -p ${ARCHLIB}
-		ln -sf ../../hexagon-unknown-none-elf/libclang_rt.builtins.a \
+		RESOURCE_DIR=$(${TOOLCHAIN_BIN}/clang --print-resource-dir)
+		ln -sf --relative "${RESOURCE_DIR}/lib/hexagon-unknown-none-elf/libclang_rt.builtins.a" \
 			${ARCHLIB}/libclang_rt.builtins.a
 
 		meson setup \
@@ -505,13 +484,12 @@ ccache --show-stats
 config_kernel
 build_kernel_headers
 build_musl_headers
-build_clang_rt_builtins
+build_builtins
 build_musl
 
-build_libs
+build_runtimes
 #build_sanitizers
 
-build_clang_rt_builtins_baremetal
 build_picolibc
 install_baremetal_cfg
 
@@ -524,6 +502,7 @@ done
 build_qemu
 
 cd ${BASE}
+
 if [[ ${MAKE_TARBALLS-0} -eq 1 ]]; then
     tar c -C $(dirname ${TOOLCHAIN_INSTALL_REL}) ${REL_NAME}/${ARCH}-linux-gnu | zstd --fast -T0 > ${RESULTS_DIR}/${REL_NAME}.tar.zst
 	for t in ${CROSS_ALL}
