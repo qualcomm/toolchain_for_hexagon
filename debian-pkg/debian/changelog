@@ -1,0 +1,8 @@
+hexagon-cross-toolchain (0.1.0~20260311) unstable; urgency=low
+
+  * Initial packaging of Hexagon cross-compilation sysroot.
+  * Builds linux headers, musl, compiler-rt builtins, libc++, and picolibc
+    using the system clang-21/lld-21.
+  * Seven binary packages following Debian cross-toolchain conventions.
+
+ -- Brian Cain <bcain@quicinc.com>  Wed, 11 Mar 2026 00:00:00 +0000

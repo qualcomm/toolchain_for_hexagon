@@ -1,0 +1,81 @@
+Source: hexagon-cross-toolchain
+Section: devel
+Priority: optional
+Maintainer: Brian Cain <bcain@quicinc.com>
+Build-Depends: debhelper-compat (= 13), clang-22, lld-22, llvm-22-dev, cmake, ninja-build, meson, fakeroot
+Standards-Version: 4.7.0
+
+Package: linux-libc-dev-hexagon-cross
+Architecture: all
+Depends: ${misc:Depends}
+Description: Linux kernel UAPI headers for Hexagon cross-compilation
+ Linux kernel headers (asm, linux, asm-generic) installed into the
+ Hexagon cross-compilation sysroot at /usr/hexagon-unknown-linux-musl/.
+ Required for building musl and other userspace libraries.
+
+Package: musl-dev-hexagon-cross
+Architecture: all
+Depends: linux-libc-dev-hexagon-cross, ${misc:Depends}
+Description: musl C library for Hexagon cross-compilation
+ musl libc headers, static library, shared library, and CRT objects
+ for the hexagon-unknown-linux-musl target.  Provides the core C
+ library needed to build Hexagon Linux userspace programs.
+
+Package: libclang-rt-22-builtins-hexagon-cross
+Architecture: all
+Depends: ${misc:Depends}
+Description: compiler-rt builtins for Hexagon Linux target
+ LLVM compiler-rt builtins library (libclang_rt.builtins-hexagon.a)
+ for the hexagon-unknown-linux-musl target.  Provides low-level
+ runtime support functions (soft-float, integer helpers, etc.).
+
+Package: libc++-22-dev-hexagon-cross
+Architecture: all
+Depends: libc++abi-22-dev-hexagon-cross, musl-dev-hexagon-cross, libclang-rt-22-builtins-hexagon-cross, ${misc:Depends}
+Description: libc++ C++ standard library for Hexagon cross-compilation
+ LLVM libc++ headers and libraries (static and shared) for the
+ hexagon-unknown-linux-musl target.  Provides the C++ standard library
+ for Hexagon Linux programs.
+
+Package: libc++abi-22-dev-hexagon-cross
+Architecture: all
+Depends: libunwind-22-dev-hexagon-cross, ${misc:Depends}
+Description: libc++abi for Hexagon cross-compilation
+ LLVM libc++abi headers and libraries (static and shared) for the
+ hexagon-unknown-linux-musl target.  Provides the low-level C++ ABI
+ support library for Hexagon Linux programs.
+
+Package: libunwind-22-dev-hexagon-cross
+Architecture: all
+Depends: ${misc:Depends}
+Description: libunwind for Hexagon cross-compilation
+ LLVM libunwind headers and libraries (static and shared) for the
+ hexagon-unknown-linux-musl target.  Provides stack unwinding support
+ for Hexagon Linux programs.
+
+Package: libclang-rt-22-builtins-hexagon-baremetal
+Architecture: all
+Depends: ${misc:Depends}
+Description: compiler-rt builtins for Hexagon baremetal target
+ LLVM compiler-rt builtins library (libclang_rt.builtins.a) for the
+ hexagon-unknown-none-elf baremetal target.  Provides low-level
+ runtime support functions for freestanding Hexagon programs.
+
+Package: picolibc-hexagon-unknown-none-elf
+Architecture: all
+Depends: libclang-rt-22-builtins-hexagon-baremetal, ${misc:Depends}
+Description: Smaller embedded C library for Hexagon development
+ picolibc built for Hexagon architecture versions v68 through v79.
+ Provides libc, libm, semihosting support, CRT objects, and linker
+ scripts for baremetal Hexagon development.  Each architecture version
+ is installed under /usr/hexagon-unknown-none-elf/lib/vXX/G0/.
+
+Package: clang-hexagon-cross
+Architecture: all
+Depends: clang-22, lld-22, linux-libc-dev-hexagon-cross, musl-dev-hexagon-cross, libclang-rt-22-builtins-hexagon-cross, ${misc:Depends}
+Recommends: libc++-22-dev-hexagon-cross, picolibc-hexagon-unknown-none-elf, libclang-rt-22-builtins-hexagon-baremetal
+Description: Clang cross-compiler configuration for Hexagon targets
+ Clang .cfg files and /usr/bin symlinks that enable
+ hexagon-unknown-linux-musl and hexagon-unknown-none-elf targets
+ using the system clang-22.  This is a meta-package that pulls in
+ the core sysroot components.
