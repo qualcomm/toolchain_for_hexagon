@@ -13,6 +13,10 @@ set(CLANG_LINKS_TO_CREATE
   hexagon-none-elf-clang
   hexagon-unknown-none-elf-clang++
   hexagon-unknown-none-elf-clang
+  hexagon-qurt-clang++
+  hexagon-qurt-clang
+  hexagon-unknown-qurt-clang++
+  hexagon-unknown-qurt-clang
   clang++
   clang-cl
   clang-cpp
