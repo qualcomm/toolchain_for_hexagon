@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Brian Cain <bcain@quicinc.com>
+Date: Thu, 24 Apr 2026 00:00:00 +0000
+Subject: [PATCH 2/2] LinkerWrapper: Exclude libLW from LLVMExports
+
+When ELD is built as LLVM_EXTERNAL_PROJECTS, libLW.so is exported as
+SHARED IMPORTED in LLVMExports.cmake.  The per-target builtins sub-build
+for hexagon-unknown-none-elf (CMAKE_SYSTEM_NAME=Generic) does
+find_package(LLVM) which loads these exports, and CMake rejects
+SHARED IMPORTED targets on platforms where TARGET_SUPPORTS_SHARED_LIBS
+is FALSE ("platform does not support dynamic linking").
+
+Add NO_EXPORT to add_llvm_library(LW ...) so libLW is excluded from the
+LLVM export set.  install(TARGETS LW ...) already handles installation
+independently.
+---
+ lib/LinkerWrapper/CMakeLists.txt | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/lib/LinkerWrapper/CMakeLists.txt b/lib/LinkerWrapper/CMakeLists.txt
+--- a/lib/LinkerWrapper/CMakeLists.txt
++++ b/lib/LinkerWrapper/CMakeLists.txt
+@@ -71,6 +71,7 @@
+ add_llvm_library(
+   LW
+   ${SHARED_LIB_SOURCES}
++  NO_EXPORT
+   PARTIAL_SOURCES_INTENDED
+   DEPENDS
+   ${PLUGIN_ELD_DEPENDENCIES}
+--
+2.34.1

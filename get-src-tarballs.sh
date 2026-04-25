@@ -37,6 +37,7 @@ get_src_tarballs() {
 	tar xf ../../eld.tar.xz --strip-components=1
 	rm ../../eld.tar.xz
 	echo ${ELD_SRC_URL} > ${MANIFEST_DIR}/eld.txt
+	apply_patches eld v${VER}-rc3
 	cd -
 
 	wget --quiet ${LLVM_TESTS_SRC_URL} -O llvm-test-suite.tar.xz
