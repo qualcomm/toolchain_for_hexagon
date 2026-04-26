@@ -24,7 +24,7 @@ ARG PICOLIBC_SRC_URL=https://github.com/picolibc/picolibc/releases/download/1.8.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates gnupg wget software-properties-common \
-        build-essential bc patch xz-utils \
+        build-essential bc patch rsync perl xz-utils \
         cmake ninja-build meson fakeroot \
         python3 qemu-user && \
     # Add LLVM 22 apt repository
