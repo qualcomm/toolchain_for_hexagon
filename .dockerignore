@@ -1,0 +1,15 @@
+# Exclude everything by default, then whitelist what the Dockerfile needs.
+*
+
+# Dockerfile ADD targets
+!patches/
+!test-suite-patches/
+!get-src-tarballs.sh
+!*.cmake
+!cmake/
+!hexagon-unknown-none-elf.cfg
+!test_init/
+!build-toolchain.sh
+!build-buildroot.sh
+!test-toolchain.sh
+!debian-pkg/

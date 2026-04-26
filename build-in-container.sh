@@ -31,3 +31,17 @@ for name in hexagon; do
     docker cp tmp_container:/usr/local/hexagon-artifacts ./hexagon-artifacts
     docker rm tmp_container
 done
+
+# Build & validate Debian packages
+docker build -t hexagon-debs:latest -f ./debian-pkg/Dockerfile .
+
+# Extract .deb files
+docker rm -f tmp_debs || /bin/true
+docker create --name tmp_debs hexagon-debs:latest
+docker cp tmp_debs:/root/hexagon-toolchain/debian-pkg/debs/. ./hexagon-artifacts/${ARTIFACT_TAG}/
+docker rm tmp_debs
+
+# Create tarball of .deb packages
+cd ./hexagon-artifacts/${ARTIFACT_TAG}
+tar czf hexagon-debs-${ARTIFACT_TAG}.tar.gz *.deb
+cd -
