@@ -42,7 +42,7 @@ build_llvm_clang_cross() {
 	DYLIB=""
 	if [[ "${dylib}" == "ON" ]]; then
 		DYLIB="-C ./cmake/caches/hexagon-stage0-dylib.cmake"
-		DIST_COMPONENTS+=(LLVM)
+		DIST_COMPONENTS+=(LLVM clang-cpp)
 	fi
 	DIST_LIST=$(IFS=';'; echo "${DIST_COMPONENTS[*]}")
 
