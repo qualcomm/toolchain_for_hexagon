@@ -53,6 +53,14 @@ under `qemu-hexagon`.
 | [ubsan/](ubsan/) | Undefined Behavior Sanitizer | Signed overflow, bad shift, null deref |
 | [asan/](asan/) | Address Sanitizer | Heap overflow, use-after-free, stack overflow |
 
+### QuRT (Qualcomm Real-Time OS)
+
+These programs target QuRT RTOS and require the [Hexagon SDK](https://developer.qualcomm.com/software/hexagon-dsp-sdk).
+
+| Example | Description |
+|---------|-------------|
+| [zig-qurt-qhl/](zig-qurt-qhl/) | Zig + QuRT with QHL including HVX-accelerated math, BLAS, and DSP |
+
 ### Other
 
 | Example | Description |
