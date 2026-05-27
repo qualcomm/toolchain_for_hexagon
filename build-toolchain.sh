@@ -122,7 +122,7 @@ build_llvm_clang() {
 add_symlinks() {
     linkdir=${1}
 
-	for triple in hexagon-unknown-linux-musl hexagon-unknown-none-elf hexagon-unknown-qurt hexagon-linux-musl hexagon-none-elf hexagon-qurt
+	for triple in hexagon-unknown-linux-musl hexagon-unknown-none-elf hexagon-unknown-qurt hexagon-linux-musl hexagon-none-elf hexagon-qurt hexagon
 	do
 		ln -sf --relative ${linkdir}/llvm-size ${linkdir}/${triple}-size
 		ln -sf --relative ${linkdir}/llvm-strip ${linkdir}/${triple}-strip
@@ -143,6 +143,7 @@ add_symlinks() {
 	do
 		ln -sf --relative ${linkdir}/clang ${linkdir}/${triple}-clang
 		ln -sf --relative ${linkdir}/clang ${linkdir}/${triple}-clang++
+		ln -sf --relative ${linkdir}/clang ${linkdir}/${triple}-cc
 	done
 }
 
