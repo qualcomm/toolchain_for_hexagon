@@ -485,11 +485,12 @@ build_clang_hexagon_cross() {
     for triple in hexagon-unknown-linux-musl hexagon-unknown-none-elf \
                   hexagon-unknown-qurt hexagon-linux-musl hexagon-none-elf \
                   hexagon-qurt hexagon; do
-        # clang / clang++ -- versioned and unversioned
+        # clang / clang++ / cc -- versioned and unversioned
         for tool in clang clang++; do
             ln -sf "${clang_target}" "${bindir}/${triple}-${tool}"
             ln -sf "${clang_target}" "${bindir}/${triple}-${tool}-${LLVM_VERSION}"
         done
+        ln -sf "${clang_target}" "${bindir}/${triple}-cc"
 
         # binutils-like tools
         for tool in ar ranlib nm objcopy objdump readelf strip size; do
