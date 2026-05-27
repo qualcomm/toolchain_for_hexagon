@@ -34,10 +34,10 @@ build_llvm_clang_cross() {
 	# (LLD is sufficient); only the native build includes ld.eld.
 	DIST_COMPONENTS=(
 		clang clang-resource-headers lld LTO
-		llvm-ar llvm-config llvm-cov llvm-cxxfilt llvm-dwarfdump
-		llvm-nm llvm-objcopy llvm-objdump llvm-profdata
+		llvm-addr2line llvm-ar llvm-config llvm-cov llvm-cxxfilt llvm-dwarfdump
+		llvm-mc llvm-nm llvm-objcopy llvm-objdump llvm-profdata
 		llvm-ranlib llvm-readelf llvm-readobj
-		llvm-size llvm-strip llvm-symbolizer
+		llvm-size llvm-strings llvm-strip llvm-symbolizer
 	)
 	DYLIB=""
 	if [[ "${dylib}" == "ON" ]]; then
