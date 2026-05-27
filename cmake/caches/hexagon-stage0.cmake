@@ -36,11 +36,13 @@ set(LLVM_ENABLE_ZSTD ON CACHE BOOL "")
 
 # Distribution components -- installed via `--target install-distribution`
 set(LLVM_TOOLCHAIN_TOOLS
+  llvm-addr2line
   llvm-ar
   llvm-config
   llvm-cov
   llvm-cxxfilt
   llvm-dwarfdump
+  llvm-mc
   llvm-nm
   llvm-objcopy
   llvm-objdump
@@ -49,6 +51,7 @@ set(LLVM_TOOLCHAIN_TOOLS
   llvm-readelf
   llvm-readobj
   llvm-size
+  llvm-strings
   llvm-strip
   llvm-symbolizer
   CACHE STRING "")
