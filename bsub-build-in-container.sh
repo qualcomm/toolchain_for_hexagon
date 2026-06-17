@@ -24,9 +24,9 @@ LSF_QUEUE="${LSF_QUEUE:-normal}"
 HOST_CLANG=/pkg/qct/software/llvm/build_tools/clang+llvm-16.0.0-x86_64-linux-gnu-ubuntu-18.04
 
 # Toolchain version and source URLs — keep in sync with Dockerfile
-VER=22.1.0
+VER=22.1.8
 LLVM_SRC_URL="https://github.com/llvm/llvm-project/archive/llvmorg-${VER}.tar.gz"
-ELD_SRC_URL="https://github.com/qualcomm/eld/archive/v${VER}-rc3.tar.gz"
+ELD_SRC_URL="https://github.com/qualcomm/eld/archive/v22.1.0-rc3.tar.gz"
 LLVM_TESTS_SRC_URL="https://github.com/llvm/llvm-test-suite/archive/llvmorg-${VER}.tar.gz"
 MUSL_SRC_URL="https://github.com/quic/musl/archive/hexagon-v1.2.4-dec-2025.tar.gz"
 LINUX_SRC_URL="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.5.tar.xz"
