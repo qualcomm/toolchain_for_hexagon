@@ -171,7 +171,11 @@ set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_USE_BUILTINS_LIBRARY ON CACH
 set(RUNTIMES_hexagon-unknown-linux-musl_SANITIZER_CXX_ABI "libc++" CACHE STRING "")
 set(RUNTIMES_hexagon-unknown-linux-musl_SANITIZER_CXX_ABI_INTREE ON CACHE BOOL "")
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_BUILTINS OFF CACHE BOOL "")
-set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_SANITIZERS ON CACHE BOOL "")
-set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_XRAY ON CACHE BOOL "")
-set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_MEMPROF ON CACHE BOOL "")
-set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_CTX_PROFILE ON CACHE BOOL "")
+# sanitizer_common fails to build on this release branch (struct stat64 is
+# incomplete on musl); the fix only exists on llvm-project main. Disable
+# everything that pulls in sanitizer_common (see compiler-rt/lib/CMakeLists.txt)
+# until that fix lands in a release we consume.
+set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_SANITIZERS OFF CACHE BOOL "")
+set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
+set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_MEMPROF OFF CACHE BOOL "")
+set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_CTX_PROFILE OFF CACHE BOOL "")
