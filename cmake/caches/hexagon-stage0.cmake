@@ -123,8 +123,12 @@ set(RUNTIMES_hexagon-unknown-linux-musl_LLVM_ENABLE_PER_TARGET_RUNTIME_DIR OFF C
 # The Hexagon driver's getCompilerRTPath() returns ${SysRoot}/usr/lib/,
 # so compiler-rt libraries must be installed there with arch-suffix names.
 # Headers stay in the resource dir (COMPILER_RT_INSTALL_INCLUDE_DIR default).
+# NOTE: must be CACHE STRING, not CACHE PATH.  A relative PATH-typed cache
+# entry is resolved against the (runtimes sub-) build directory, which sent the
+# sanitizer libs to obj_llvm/.../runtimes-bins instead of the sysroot.  STRING
+# is joined to CMAKE_INSTALL_PREFIX at install time, matching LIBCXX_* below.
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_INSTALL_LIBRARY_DIR
-    "target/hexagon-unknown-linux-musl/usr/lib" CACHE PATH "")
+    "target/hexagon-unknown-linux-musl/usr/lib" CACHE STRING "")
 
 # libc++/libcxxabi/libunwind headers and libraries -> sysroot.
 # Paths are relative to CMAKE_INSTALL_PREFIX (the host toolchain root).
