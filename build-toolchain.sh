@@ -309,7 +309,6 @@ build_qemu() {
 	                  --disable-curses \
 	                  --disable-libssh \
 	                  --disable-libnfs \
-	                  --disable-glusterfs \
 	                  --disable-rbd \
 		--target-list=hexagon-softmmu,hexagon-linux-user --prefix=${TOOLCHAIN_INSTALL}/${ARCH}-linux-gnu \
 		--extra-cflags="-Wno-error=misleading-indentation" \
