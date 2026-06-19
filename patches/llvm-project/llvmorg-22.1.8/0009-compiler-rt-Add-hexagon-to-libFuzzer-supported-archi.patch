@@ -1,0 +1,29 @@
+From e95b79f8c8e003fb4365b9fcf744052ac35bf6de Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Mon, 30 Mar 2026 10:00:00 -0700
+Subject: [PATCH] [compiler-rt] Add hexagon to libFuzzer supported
+ architectures
+
+LibFuzzer is pure C++ with no target-specific assembly, so it builds
+cleanly for Hexagon Linux.  Add HEXAGON to ALL_FUZZER_SUPPORTED_ARCH
+on Linux so that the build system recognizes it as a valid target.
+---
+ compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake b/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake
+index 0cae5da26c3e..a1b324ce6fac 100644
+--- a/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake
++++ b/compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake
+@@ -60,7 +60,7 @@ endif()
+ 
+ if(OS_NAME MATCHES "Linux")
+   set(ALL_FUZZER_SUPPORTED_ARCH ${X86} ${X86_64} ${ARM32} ${ARM64} ${S390X}
+-      ${RISCV64} ${LOONGARCH64})
++      ${RISCV64} ${LOONGARCH64} ${HEXAGON})
+ elseif (OS_NAME MATCHES "Windows")
+   set(ALL_FUZZER_SUPPORTED_ARCH ${X86} ${X86_64})
+ elseif(OS_NAME MATCHES "Android")
+-- 
+2.34.1
+

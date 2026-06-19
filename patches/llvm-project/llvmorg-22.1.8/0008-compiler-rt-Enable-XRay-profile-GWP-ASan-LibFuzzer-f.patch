@@ -1,0 +1,37 @@
+From 989297eddc8dc34190908ff31f75760b2ef994d8 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Mon, 30 Mar 2026 10:00:00 -0700
+Subject: [PATCH] [compiler-rt] Enable XRay, profile, GWP-ASan, LibFuzzer for
+ hexagon in standalone cache
+
+Enable additional compiler-rt components in the hexagon-linux-clangrt
+standalone cache file:
+
+  - XRay: backend emits XRay sleds (HexagonAsmPrinter::EmitSled),
+    runtime has xray_trampoline_hexagon.S
+  - Profile: instrumentation profiling (PGO) support
+  - GWP-ASan: sampling heap error detector
+  - LibFuzzer: coverage-guided fuzzer (pure C++, no target-specific asm)
+---
+ compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
+index 269395f965a5..e40a706be885 100644
+--- a/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
++++ b/compiler-rt/cmake/caches/hexagon-linux-clangrt.cmake
+@@ -6,7 +6,10 @@ set(COMPILER_RT_USE_LLVM_UNWINDER ON CACHE BOOL "")
+ 
+ set(COMPILER_RT_BUILD_BUILTINS OFF CACHE BOOL "")
+ set(COMPILER_RT_BUILD_SANITIZERS ON CACHE BOOL "")
+-set(COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
++set(COMPILER_RT_BUILD_XRAY ON CACHE BOOL "")
++set(COMPILER_RT_BUILD_PROFILE ON CACHE BOOL "")
++set(COMPILER_RT_BUILD_GWP_ASAN ON CACHE BOOL "")
++set(COMPILER_RT_BUILD_LIBFUZZER ON CACHE BOOL "")
+ set(COMPILER_RT_BUILD_MEMPROF ON CACHE BOOL "")
+ set(COMPILER_RT_BUILD_CTX_PROFILE ON CACHE BOOL "")
+ 
+-- 
+2.34.1
+
