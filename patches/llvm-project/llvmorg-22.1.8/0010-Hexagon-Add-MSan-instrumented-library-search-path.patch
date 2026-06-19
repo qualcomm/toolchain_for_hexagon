@@ -1,0 +1,50 @@
+From 8e7d07575be1bbe189d37f4b676e87ef1299f496 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Mon, 30 Mar 2026 10:00:00 -0700
+Subject: [PATCH] [Hexagon] Add MSan-instrumented library search path
+
+When MemorySanitizer is active, prepend -L<sysroot>/usr/msan/lib to
+the linker search path so that MSan-instrumented musl, libc++,
+libc++abi, and libunwind are preferred over uninstrumented ones.
+
+The MSan-instrumented libraries are built as a separate variant during
+toolchain construction and installed into <sysroot>/usr/msan/.  By
+placing this -L before the normal -L<sysroot>/usr/lib, the linker
+picks up instrumented libraries first, avoiding false positives from
+uninstrumented libc/C++ runtime code.
+---
+ clang/lib/Driver/ToolChains/Hexagon.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/clang/lib/Driver/ToolChains/Hexagon.cpp b/clang/lib/Driver/ToolChains/Hexagon.cpp
+index 084f51721315..7a08c5884f22 100644
+--- a/clang/lib/Driver/ToolChains/Hexagon.cpp
++++ b/clang/lib/Driver/ToolChains/Hexagon.cpp
+@@ -8,6 +8,7 @@
+ 
+ #include "Hexagon.h"
+ #include "clang/Driver/CommonArgs.h"
++#include "clang/Driver/SanitizerArgs.h"
+ #include "clang/Driver/Compilation.h"
+ #include "clang/Driver/Driver.h"
+ #include "clang/Driver/InputInfo.h"
+@@ -360,6 +361,16 @@ constructHexagonLinkArgs(Compilation &C, const JobAction &JA,
+              !Args.hasArg(options::OPT_nostartfiles, options::OPT_nostdlib))
+       CmdArgs.push_back(Args.MakeArgString(D.SysRoot + "/usr/lib/crti.o"));
+ 
++    // When MSan is active, prepend the MSan-instrumented library directory
++    // so that instrumented libc++, libc++abi, libunwind, and musl are
++    // preferred over uninstrumented ones.
++    if (HTC.getSanitizerArgs(Args).needsMsanRt()) {
++      CmdArgs.push_back(
++          Args.MakeArgString(StringRef("-L") + D.SysRoot + "/usr/msan/lib"));
++      CmdArgs.push_back(
++          Args.MakeArgString(StringRef("-rpath") + "=" + D.SysRoot + "/usr/msan/lib"));
++    }
++
+     CmdArgs.push_back(
+         Args.MakeArgString(StringRef("-L") + D.SysRoot + "/usr/lib"));
+     Args.addAllArgs(CmdArgs, {options::OPT_T_Group, options::OPT_s,
+-- 
+2.34.1
+

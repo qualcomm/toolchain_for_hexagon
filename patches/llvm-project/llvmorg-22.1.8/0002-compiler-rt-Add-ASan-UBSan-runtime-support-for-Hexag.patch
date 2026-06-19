@@ -1,0 +1,312 @@
+From 40ba89064190b46e9b18a6df056b01148d5e758f Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Sat, 28 Feb 2026 22:21:29 -0800
+Subject: [PATCH] [compiler-rt] Add ASan/UBSan runtime support for Hexagon
+ Linux
+
+Add the architecture-specific pieces needed for the ASan and UBSan
+sanitizer runtimes to build and run on hexagon-unknown-linux-musl.
+
+Without this patch, building sanitizer runtimes for Hexagon Linux fails
+with:
+
+  sanitizer_linux.cpp: error: member access into incomplete type
+      'struct stat64'
+
+because musl libc does not provide struct stat64.  This patch routes
+Hexagon through the statx() syscall path (like LoongArch) to avoid the
+stat64 dependency entirely.
+
+Changes:
+
+* asan_mapping.h: Add ASAN_SHADOW_OFFSET_CONST (0x20000000) for
+  Hexagon with shadow layout documentation.
+* sanitizer_linux.cpp: Implement internal_clone() for Hexagon using
+  inline assembly (trap0 syscall, generic clone argument order:
+  flags, stack, ptid, ctid, tls).  Route Hexagon through the statx()
+  path for stat operations since musl lacks struct stat64.
+* sanitizer_linux.h: Add Hexagon to the internal_clone() declaration
+  guard.
+* sanitizer_stoptheworld_linux_libcdep.cpp: Add Hexagon to the
+  StopTheWorld architecture guard with register definitions.
+* sanitizer_asm.h: Define ASM_TAIL_CALL as 'jump' for Hexagon.
+* CMakeLists.txt: Add -fno-emulated-tls for Hexagon targets.  Hexagon
+  Linux uses native TLS via the UGP register; emulated TLS produces
+  broken sanitizer runtimes with unresolvable __emutls references.
+---
+ compiler-rt/CMakeLists.txt                    |  7 +++
+ compiler-rt/lib/asan/asan_mapping.h           |  9 +++
+ .../lib/sanitizer_common/sanitizer_asm.h      |  2 +
+ .../lib/sanitizer_common/sanitizer_linux.cpp  | 63 +++++++++++++++----
+ .../lib/sanitizer_common/sanitizer_linux.h    |  3 +-
+ .../sanitizer_stoptheworld_linux_libcdep.cpp  | 49 ++++++++-------
+ 6 files changed, 99 insertions(+), 34 deletions(-)
+
+diff --git a/compiler-rt/CMakeLists.txt b/compiler-rt/CMakeLists.txt
+index a92258ae1244..aba71f9b2fb7 100644
+--- a/compiler-rt/CMakeLists.txt
++++ b/compiler-rt/CMakeLists.txt
+@@ -355,6 +355,13 @@ if("${ANDROID_API_LEVEL}" GREATER_EQUAL 29)
+   list(APPEND SANITIZER_COMMON_CFLAGS -fno-emulated-tls)
+   string(APPEND COMPILER_RT_TEST_COMPILER_CFLAGS " -fno-emulated-tls")
+ endif()
++# Hexagon Linux uses native TLS (TPREL via the UGP register); the sanitizer
++# runtimes must be built without emulated TLS so that __thread variables are
++# placed in .tdata/.tbss instead of emutls control structures.
++if("${COMPILER_RT_DEFAULT_TARGET_ARCH}" MATCHES "hexagon")
++  list(APPEND SANITIZER_COMMON_CFLAGS -fno-emulated-tls)
++  string(APPEND COMPILER_RT_TEST_COMPILER_CFLAGS " -fno-emulated-tls")
++endif()
+ if(NOT WIN32)
+   append_list_if(COMPILER_RT_HAS_FPIC_FLAG -fPIC SANITIZER_COMMON_CFLAGS)
+ endif()
+diff --git a/compiler-rt/lib/asan/asan_mapping.h b/compiler-rt/lib/asan/asan_mapping.h
+index 338324686a31..dea4f44a0f0f 100644
+--- a/compiler-rt/lib/asan/asan_mapping.h
++++ b/compiler-rt/lib/asan/asan_mapping.h
+@@ -171,6 +171,13 @@
+ // || `[0x36000000, 0x39ffffff]` || ShadowGap  ||
+ // || `[0x30000000, 0x35ffffff]` || LowShadow  ||
+ // || `[0x00000000, 0x2fffffff]` || LowMem     ||
++//
++// Default Hexagon/Linux mapping (32-bit, 4 GB VA):
++// || `[0x40000000, 0xffffffff]` || HighMem    ||
++// || `[0x28000000, 0x3fffffff]` || HighShadow ||
++// || `[0x24000000, 0x27ffffff]` || ShadowGap  ||
++// || `[0x20000000, 0x23ffffff]` || LowShadow  ||
++// || `[0x00000000, 0x1fffffff]` || LowMem     ||
+ 
+ #define ASAN_SHADOW_SCALE 3
+ 
+@@ -189,6 +196,8 @@
+ #    define ASAN_SHADOW_OFFSET_CONST 0x30000000
+ #  elif SANITIZER_IOS
+ #    define ASAN_SHADOW_OFFSET_DYNAMIC
++#  elif defined(__hexagon__)
++#    define ASAN_SHADOW_OFFSET_CONST 0x20000000
+ #  else
+ #    define ASAN_SHADOW_OFFSET_CONST 0x20000000
+ #  endif
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_asm.h b/compiler-rt/lib/sanitizer_common/sanitizer_asm.h
+index 30e9d15184e5..9235422499df 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_asm.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_asm.h
+@@ -61,6 +61,8 @@
+ # define ASM_TAIL_CALL jg
+ #elif defined(__riscv)
+ # define ASM_TAIL_CALL tail
++#elif defined(__hexagon__)
++#  define ASM_TAIL_CALL jump
+ #endif
+ 
+ // Currently, almost all of the shared libraries rely on the value of
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp b/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
+index b73b84c29008..d3f4fffe0423 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
+@@ -90,10 +90,15 @@
+ extern "C" SANITIZER_WEAK_ATTRIBUTE const char *strerrorname_np(int);
+ #  endif
+ 
+-#  if SANITIZER_LINUX && defined(__loongarch__)
++#  if SANITIZER_LINUX && (defined(__loongarch__) || defined(__hexagon__))
+ #    include <sys/sysmacros.h>
+ #  endif
+ 
++// Hexagon uses statx() instead of stat64(). The statx types and
++// STATX_BASIC_STATS are provided by <sys/stat.h> (already included above)
++// for both musl and glibc.  Do NOT include <linux/stat.h> here as it
++// conflicts with musl's definitions.
++
+ #  if SANITIZER_LINUX && defined(__powerpc64__)
+ #    include <asm/ptrace.h>
+ #  endif
+@@ -344,7 +349,8 @@ uptr internal_ftruncate(fd_t fd, uptr size) {
+   return res;
+ }
+ 
+-#    if !SANITIZER_LINUX_USES_64BIT_SYSCALLS && SANITIZER_LINUX
++#    if !SANITIZER_LINUX_USES_64BIT_SYSCALLS && SANITIZER_LINUX && \
++        !defined(__hexagon__)
+ static void stat64_to_stat(struct stat64 *in, struct stat *out) {
+   internal_memset(out, 0, sizeof(*out));
+   out->st_dev = in->st_dev;
+@@ -363,7 +369,7 @@ static void stat64_to_stat(struct stat64 *in, struct stat *out) {
+ }
+ #    endif
+ 
+-#    if SANITIZER_LINUX && defined(__loongarch__)
++#    if SANITIZER_LINUX && (defined(__loongarch__) || defined(__hexagon__))
+ static void statx_to_stat(struct statx *in, struct stat *out) {
+   internal_memset(out, 0, sizeof(*out));
+   out->st_dev = makedev(in->stx_dev_major, in->stx_dev_minor);
+@@ -443,7 +449,7 @@ uptr internal_stat(const char *path, void *buf) {
+ #    if SANITIZER_FREEBSD
+   return internal_syscall(SYSCALL(fstatat), AT_FDCWD, (uptr)path, (uptr)buf, 0);
+ #    elif SANITIZER_LINUX
+-#      if defined(__loongarch__)
++#      if defined(__loongarch__) || defined(__hexagon__)
+   struct statx bufx;
+   int res = internal_syscall(SYSCALL(statx), AT_FDCWD, (uptr)path,
+                              AT_NO_AUTOMOUNT, STATX_BASIC_STATS, (uptr)&bufx);
+@@ -481,7 +487,7 @@ uptr internal_lstat(const char *path, void *buf) {
+   return internal_syscall(SYSCALL(fstatat), AT_FDCWD, (uptr)path, (uptr)buf,
+                           AT_SYMLINK_NOFOLLOW);
+ #    elif SANITIZER_LINUX
+-#      if defined(__loongarch__)
++#      if defined(__loongarch__) || defined(__hexagon__)
+   struct statx bufx;
+   int res = internal_syscall(SYSCALL(statx), AT_FDCWD, (uptr)path,
+                              AT_SYMLINK_NOFOLLOW | AT_NO_AUTOMOUNT,
+@@ -516,7 +522,13 @@ uptr internal_lstat(const char *path, void *buf) {
+ }
+ 
+ uptr internal_fstat(fd_t fd, void *buf) {
+-#    if SANITIZER_FREEBSD || SANITIZER_LINUX_USES_64BIT_SYSCALLS
++#    if SANITIZER_LINUX && (defined(__loongarch__) || defined(__hexagon__))
++  struct statx bufx;
++  int res = internal_syscall(SYSCALL(statx), fd, "", AT_EMPTY_PATH,
++                             STATX_BASIC_STATS, (uptr)&bufx);
++  statx_to_stat(&bufx, (struct stat*)buf);
++  return res;
++#    elif SANITIZER_FREEBSD || SANITIZER_LINUX_USES_64BIT_SYSCALLS
+ #      if SANITIZER_MIPS64
+   // For mips64, fstat syscall fills buffer in the format of kernel_stat
+   kstat_t kbuf;
+@@ -529,12 +541,6 @@ uptr internal_fstat(fd_t fd, void *buf) {
+   int res = internal_syscall(SYSCALL(fstat64), fd, &kbuf);
+   kernel_stat_to_stat(&kbuf, (struct stat *)buf);
+   return res;
+-#      elif SANITIZER_LINUX && defined(__loongarch__)
+-  struct statx bufx;
+-  int res = internal_syscall(SYSCALL(statx), fd, "", AT_EMPTY_PATH,
+-                             STATX_BASIC_STATS, (uptr)&bufx);
+-  statx_to_stat(&bufx, (struct stat *)buf);
+-  return res;
+ #      else
+   return internal_syscall(SYSCALL(fstat), fd, (uptr)buf);
+ #      endif
+@@ -1892,6 +1898,39 @@ uptr internal_clone(int (*fn)(void *), void *child_stack, int flags, void *arg,
+       : "memory");
+   return res;
+ }
++#    elif defined(__hexagon__)
++uptr internal_clone(int (*fn)(void*), void* child_stack, int flags, void* arg,
++                    int* parent_tidptr, void* newtls, int* child_tidptr) {
++  if (!fn || !child_stack)
++    return -EINVAL;
++  child_stack = (char*)child_stack - 2 * sizeof(unsigned int);
++  ((unsigned int*)child_stack)[0] = (uptr)fn;
++  ((unsigned int*)child_stack)[1] = (uptr)arg;
++
++  // Hexagon clone syscall uses the generic argument order (no
++  // CONFIG_CLONE_BACKWARDS): flags, stack, ptid, ctid, tls.
++  register int r0 __asm__("r0") = flags;
++  register void* r1 __asm__("r1") = child_stack;
++  register int* r2 __asm__("r2") = parent_tidptr;
++  register int* r3 __asm__("r3") = child_tidptr;
++  register void* r4 __asm__("r4") = newtls;
++  register int r6 __asm__("r6") = __NR_clone;
++
++  __asm__ __volatile__(
++      "trap0(#1)\n"             /* syscall */
++      "{ p0 = cmp.eq(r0, #0)\n" /* child? */
++      "  if (!p0.new) jump:nt 1f }\n"
++      "r1 = memw(r29 + #0)\n" /* r1 = fn */
++      "r0 = memw(r29 + #4)\n" /* r0 = arg */
++      "callr r1\n"            /* fn(arg) */
++      "r6 = #%7\n"            /* __NR_exit */
++      "trap0(#1)\n"
++      "1:\n"
++      : "=r"(r0)
++      : "0"(r0), "r"(r1), "r"(r2), "r"(r3), "r"(r4), "r"(r6), "i"(__NR_exit)
++      : "memory", "p0", "r1", "lr");
++  return (uptr)r0;
++}
+ #    endif
+ #  endif  // SANITIZER_LINUX
+ 
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_linux.h b/compiler-rt/lib/sanitizer_common/sanitizer_linux.h
+index e621799c4bdf..2f73dba3bc1c 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_linux.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_linux.h
+@@ -86,7 +86,8 @@ int internal_sigaction_norestorer(int signum, const void *act, void *oldact);
+ void internal_sigdelset(__sanitizer_sigset_t *set, int signum);
+ #    if defined(__x86_64__) || defined(__mips__) || defined(__aarch64__) || \
+         defined(__powerpc64__) || defined(__s390__) || defined(__i386__) || \
+-        defined(__arm__) || SANITIZER_RISCV64 || SANITIZER_LOONGARCH64
++        defined(__arm__) || defined(__hexagon__) || SANITIZER_RISCV64 ||    \
++        SANITIZER_LOONGARCH64
+ uptr internal_clone(int (*fn)(void *), void *child_stack, int flags, void *arg,
+                     int *parent_tidptr, void *newtls, int *child_tidptr);
+ #    endif
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cpp b/compiler-rt/lib/sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cpp
+index 2bf547f4a721..5070e85e9c2c 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cpp
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_stoptheworld_linux_libcdep.cpp
+@@ -16,24 +16,24 @@
+ #if SANITIZER_LINUX &&                                                   \
+     (defined(__x86_64__) || defined(__mips__) || defined(__aarch64__) || \
+      defined(__powerpc64__) || defined(__s390__) || defined(__i386__) || \
+-     defined(__arm__) || SANITIZER_RISCV64 || SANITIZER_LOONGARCH64)
+-
+-#include "sanitizer_stoptheworld.h"
+-
+-#include "sanitizer_platform_limits_posix.h"
+-#include "sanitizer_atomic.h"
+-
+-#include <errno.h>
+-#include <sched.h> // for CLONE_* definitions
+-#include <stddef.h>
+-#include <sys/prctl.h> // for PR_* definitions
+-#include <sys/ptrace.h> // for PTRACE_* definitions
+-#include <sys/types.h> // for pid_t
+-#include <sys/uio.h> // for iovec
+-#include <elf.h> // for NT_PRSTATUS
+-#if (defined(__aarch64__) || defined(__powerpc64__) || \
+-     SANITIZER_RISCV64 || SANITIZER_LOONGARCH64) &&    \
+-     !SANITIZER_ANDROID
++     defined(__arm__) || defined(__hexagon__) || SANITIZER_RISCV64 ||    \
++     SANITIZER_LOONGARCH64)
++
++#  include <elf.h>  // for NT_PRSTATUS
++#  include <errno.h>
++#  include <sched.h>  // for CLONE_* definitions
++#  include <stddef.h>
++#  include <sys/prctl.h>   // for PR_* definitions
++#  include <sys/ptrace.h>  // for PTRACE_* definitions
++#  include <sys/types.h>   // for pid_t
++#  include <sys/uio.h>     // for iovec
++
++#  include "sanitizer_atomic.h"
++#  include "sanitizer_platform_limits_posix.h"
++#  include "sanitizer_stoptheworld.h"
++#  if (defined(__aarch64__) || defined(__powerpc64__) ||                      \
++       defined(__hexagon__) || SANITIZER_RISCV64 || SANITIZER_LOONGARCH64) && \
++      !SANITIZER_ANDROID
+ // GLIBC 2.20+ sys/user does not include asm/ptrace.h
+ # include <asm/ptrace.h>
+ #endif
+@@ -613,9 +613,16 @@ typedef _user_regs_struct regs_struct;
+ static constexpr uptr kExtraRegs[] = {0};
+ #define ARCH_IOVEC_FOR_GETREGSET
+ 
+-#else
+-#error "Unsupported architecture"
+-#endif // SANITIZER_ANDROID && defined(__arm__)
++#  elif defined(__hexagon__)
++#    include <asm/user.h>
++typedef struct user_regs_struct regs_struct;
++#    define REG_SP r29
++static constexpr uptr kExtraRegs[] = {0};
++#    define ARCH_IOVEC_FOR_GETREGSET
++
++#  else
++#    error "Unsupported architecture"
++#  endif  // SANITIZER_ANDROID && defined(__arm__)
+ 
+ ThreadID SuspendedThreadsListLinux::GetThreadID(uptr index) const {
+   CHECK_LT(index, thread_ids_.size());
+-- 
+2.34.1
+
