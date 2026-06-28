@@ -47,6 +47,8 @@ tarballs of the release and purge the intermediate build artifacts.
 * optional `CROSS_TRIPLES_PIC` - additional cross toolchain builds, built
 with position-independent code.  This is required for eld and implies that
 eld should be included with this toolchain.
+* optional `CROSS_TRIPLES_DYLIB` - additional cross toolchain builds that
+link LLVM and clang as shared libraries (`libLLVM.so` / `libclang-cpp.so`).
 
 Sample usage:
 
@@ -55,8 +57,9 @@ Sample usage:
     export ROOT_INSTALL=$PWD/install_rootfs
     export ARTIFACT_BASE=$PWD/artifacts
     export TEST_TOOLCHAIN=0
-    export CROSS_TRIPLES="x86_64-linux-musl aarch64-linux-musl aarch64-windows-gnu x86_64-windows-gnu aarch64-macos"
-    export CROSS_TRIPLES_PIC=""
+    export CROSS_TRIPLES=""
+    export CROSS_TRIPLES_PIC="aarch64-windows-gnu x86_64-windows-gnu"
+    export CROSS_TRIPLES_DYLIB="x86_64-linux-gnu aarch64-linux-gnu aarch64-macos"
 
     mkdir -p ${ARTIFACT_BASE}
 
