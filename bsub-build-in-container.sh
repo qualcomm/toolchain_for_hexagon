@@ -56,7 +56,7 @@ Options:
   --skip-tests         Skip test-toolchain.sh
   --skip-buildroot     Skip build-buildroot.sh
   --with-zig           Download zig and enable cross-compilation for
-                       x86_64-linux-musl, aarch64-linux-musl,
+                       x86_64-linux-gnu, aarch64-linux-gnu,
                        aarch64-windows-gnu, x86_64-windows-gnu, aarch64-macos
   --queue QUEUE        LSF queue (default: ${LSF_QUEUE})
   --dry-run            Print bsub command without submitting
@@ -232,7 +232,7 @@ run_payload() {
         export CROSS_TRIPLES=""
         # Windows targets cannot use LLVM dylib — use PIC-only instead
         export CROSS_TRIPLES_PIC="aarch64-windows-gnu x86_64-windows-gnu"
-        export CROSS_TRIPLES_DYLIB="x86_64-linux-musl aarch64-linux-musl aarch64-macos"
+        export CROSS_TRIPLES_DYLIB="x86_64-linux-gnu aarch64-linux-gnu aarch64-macos"
     else
         # No zig — skip cross-compilation for other host triples
         export CROSS_TRIPLES=""
