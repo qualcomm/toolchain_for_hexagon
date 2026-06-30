@@ -14,7 +14,7 @@ FROM ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 
 # ── Build arguments (override at build time) ────────────────────────
-ARG VER=22.1.4
+ARG VER=22.1.8
 ARG LLVM_SRC_URL=https://github.com/llvm/llvm-project/archive/llvmorg-${VER}.tar.gz
 ARG MUSL_SRC_URL=https://github.com/quic/musl/archive/hexagon-v1.2.4-apr-2026.tar.gz
 ARG LINUX_SRC_URL=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.5.tar.xz
