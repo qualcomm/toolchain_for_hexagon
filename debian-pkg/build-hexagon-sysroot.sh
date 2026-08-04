@@ -11,8 +11,8 @@
 set -euo pipefail
 set -x
 
-# -- LLVM version (override via environment, e.g. LLVM_VERSION=22) ----
-LLVM_VERSION="${LLVM_VERSION:-22}"
+# -- LLVM version (override via environment, e.g. LLVM_VERSION=23) ----
+LLVM_VERSION="${LLVM_VERSION:-23}"
 
 # -- Paths --------------------------------------------------------------
 # LLVM_ROOT can be overridden via environment (e.g. to point at a

@@ -2,7 +2,7 @@ Source: hexagon-cross-toolchain
 Section: devel
 Priority: optional
 Maintainer: Brian Cain <bcain@quicinc.com>
-Build-Depends: debhelper-compat (= 13), clang-22, lld-22, llvm-22-dev, cmake, ninja-build, meson, fakeroot
+Build-Depends: debhelper-compat (= 13), clang-23, lld-23, llvm-23-dev, cmake, ninja-build, meson, fakeroot
 Standards-Version: 4.7.0
 
 Package: linux-libc-dev-hexagon-cross
@@ -21,7 +21,7 @@ Description: musl C library for Hexagon cross-compilation
  for the hexagon-unknown-linux-musl target.  Provides the core C
  library needed to build Hexagon Linux userspace programs.
 
-Package: libclang-rt-22-builtins-hexagon-cross
+Package: libclang-rt-23-builtins-hexagon-cross
 Architecture: all
 Depends: ${misc:Depends}
 Description: compiler-rt builtins for Hexagon Linux target
@@ -29,23 +29,23 @@ Description: compiler-rt builtins for Hexagon Linux target
  for the hexagon-unknown-linux-musl target.  Provides low-level
  runtime support functions (soft-float, integer helpers, etc.).
 
-Package: libc++-22-dev-hexagon-cross
+Package: libc++-23-dev-hexagon-cross
 Architecture: all
-Depends: libc++abi-22-dev-hexagon-cross, musl-dev-hexagon-cross, libclang-rt-22-builtins-hexagon-cross, ${misc:Depends}
+Depends: libc++abi-23-dev-hexagon-cross, musl-dev-hexagon-cross, libclang-rt-23-builtins-hexagon-cross, ${misc:Depends}
 Description: libc++ C++ standard library for Hexagon cross-compilation
  LLVM libc++ headers and libraries (static and shared) for the
  hexagon-unknown-linux-musl target.  Provides the C++ standard library
  for Hexagon Linux programs.
 
-Package: libc++abi-22-dev-hexagon-cross
+Package: libc++abi-23-dev-hexagon-cross
 Architecture: all
-Depends: libunwind-22-dev-hexagon-cross, ${misc:Depends}
+Depends: libunwind-23-dev-hexagon-cross, ${misc:Depends}
 Description: libc++abi for Hexagon cross-compilation
  LLVM libc++abi headers and libraries (static and shared) for the
  hexagon-unknown-linux-musl target.  Provides the low-level C++ ABI
  support library for Hexagon Linux programs.
 
-Package: libunwind-22-dev-hexagon-cross
+Package: libunwind-23-dev-hexagon-cross
 Architecture: all
 Depends: ${misc:Depends}
 Description: libunwind for Hexagon cross-compilation
@@ -53,7 +53,7 @@ Description: libunwind for Hexagon cross-compilation
  hexagon-unknown-linux-musl target.  Provides stack unwinding support
  for Hexagon Linux programs.
 
-Package: libclang-rt-22-builtins-hexagon-baremetal
+Package: libclang-rt-23-builtins-hexagon-baremetal
 Architecture: all
 Depends: ${misc:Depends}
 Description: compiler-rt builtins for Hexagon baremetal target
@@ -63,7 +63,7 @@ Description: compiler-rt builtins for Hexagon baremetal target
 
 Package: picolibc-hexagon-unknown-none-elf
 Architecture: all
-Depends: libclang-rt-22-builtins-hexagon-baremetal, ${misc:Depends}
+Depends: libclang-rt-23-builtins-hexagon-baremetal, ${misc:Depends}
 Description: Smaller embedded C library for Hexagon development
  picolibc built for Hexagon architecture versions v68 through v79.
  Provides libc, libm, semihosting support, CRT objects, and linker
@@ -72,10 +72,10 @@ Description: Smaller embedded C library for Hexagon development
 
 Package: clang-hexagon-cross
 Architecture: all
-Depends: clang-22, lld-22, linux-libc-dev-hexagon-cross, musl-dev-hexagon-cross, libclang-rt-22-builtins-hexagon-cross, ${misc:Depends}
-Recommends: libc++-22-dev-hexagon-cross, picolibc-hexagon-unknown-none-elf, libclang-rt-22-builtins-hexagon-baremetal
+Depends: clang-23, lld-23, linux-libc-dev-hexagon-cross, musl-dev-hexagon-cross, libclang-rt-23-builtins-hexagon-cross, ${misc:Depends}
+Recommends: libc++-23-dev-hexagon-cross, picolibc-hexagon-unknown-none-elf, libclang-rt-23-builtins-hexagon-baremetal
 Description: Clang cross-compiler configuration for Hexagon targets
  Clang .cfg files and /usr/bin symlinks that enable
  hexagon-unknown-linux-musl and hexagon-unknown-none-elf targets
- using the system clang-22.  This is a meta-package that pulls in
+ using the system clang-23.  This is a meta-package that pulls in
  the core sysroot components.

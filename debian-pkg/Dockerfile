@@ -27,14 +27,14 @@ RUN apt-get update && \
         build-essential bc patch rsync perl xz-utils \
         cmake ninja-build meson fakeroot \
         python3 qemu-user && \
-    # Add LLVM 22 apt repository
+    # Add LLVM 23 apt repository
     wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
         tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc && \
     add-apt-repository -y \
-        "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" && \
+        "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-23 main" && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        clang-22 lld-22 llvm-22-dev && \
+        clang-23 lld-23 llvm-23-dev && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /root/hexagon-toolchain
