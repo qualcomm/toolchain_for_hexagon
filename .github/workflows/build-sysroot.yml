@@ -1,0 +1,549 @@
+# build-sysroot.yml
+#
+# Builds a Hexagon sysroot (compiler-rt builtins, picolibc, H2, runtimes)
+# on top of a freshly-built Hexagon LLVM/Clang toolchain, all from latest
+# upstream sources.
+#
+# Three jobs:
+#   build-toolchain  - builds clang/llvm-tools + ELD (no lld, no builtins)
+#                      from latest llvm-project (main) and eld (main).
+#                      Installs into Tools/ so the sysroot scripts can install
+#                      directly into the same tree (bin/../target/picolibc/...)
+#                      matching the DEFAULT_SYSROOT compiled into clang.
+#                      Uploads the toolchain as an intermediate artifact.
+#   build-qemu       - builds qemu-system-hexagon from quic/qemu; uploads
+#                      the binary as an intermediate artifact.  Required by the
+#                      H2 build to execute the asm_offsets generator ELF.
+#   build-sysroot    - downloads the toolchain and qemu, fetches latest
+#                      llvm-project (compiler-rt + runtimes), picolibc (main),
+#                      and H2 (quic-k/hexagon-hypervisor@upstream-toolchain),
+#                      then runs the four sysroot-build scripts in order:
+#                        1. build_hexagon_builtins.sh
+#                        2. build_hexagon_picolibc.sh
+#                        3. build_hexagon_h2.sh  (uses qemu-system-hexagon)
+#                        4. build_hexagon_runtimes.sh
+#                      Each script installs into ${TC_ROOT}/Tools/target/picolibc/
+#                      so clang can find the sysroot for the next script.
+#                      Uploads only the sysroot subtree as the final artifact.
+#
+# Trigger: manual (workflow_dispatch) or PR (temporary, for testing).
+
+name: Build Hexagon Sysroot
+
+on:
+  # TODO: remove pull_request once CI is validated
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      llvm_ref:
+        description: 'llvm-project branch/tag/SHA to build clang and sysroot libs from'
+        required: false
+        default: 'main'
+      eld_ref:
+        description: 'qualcomm/eld branch/tag/SHA'
+        required: false
+        default: 'main'
+      picolibc_ref:
+        description: 'picolibc branch/tag/SHA'
+        required: false
+        default: 'main'
+      h2_repo:
+        description: 'H2 (hexagon-hypervisor) repository URL'
+        required: false
+        default: 'https://github.com/quic-k/hexagon-hypervisor'
+      h2_ref:
+        description: 'H2 repository branch/tag/SHA'
+        required: false
+        default: 'upstream-toolchain'
+      qemu_ref:
+        description: 'quic/qemu branch/tag/SHA for qemu-system-hexagon'
+        required: false
+        default: 'hexagon-sysemu-11-nov-2025'
+      build_cores:
+        description: 'Space-separated Hexagon arch versions to fully build (others are symlinked)'
+        required: false
+        default: 'v68'
+      all_cores:
+        description: 'Space-separated full set of Hexagon arch versions to install for'
+        required: false
+        default: 'v68 v69 v71 v71t v73 v75 v77 v79 v81 v83 v85 v87 v89 v91'
+
+# ---------------------------------------------------------------------------
+# Shared constants
+# ---------------------------------------------------------------------------
+env:
+  # Toolchain is installed into TC_ROOT/Tools/ so that the sysroot scripts
+  # can set INSTALLPATH=TC_ROOT and have ${INSTALLPATH}/Tools/target/picolibc/
+  # land exactly where clang's DEFAULT_SYSROOT (bin/../target/picolibc/) looks.
+  TC_ROOT: ${{ github.workspace }}/hexagon-toolchain
+
+# ---------------------------------------------------------------------------
+# Job A: build-toolchain
+# ---------------------------------------------------------------------------
+jobs:
+  build-toolchain:
+    name: Build Hexagon Clang + ELD, no lld (latest)
+    runs-on: ubuntu-latest
+
+    # Resolve all inputs once; steps reference ${{ env.LLVM_REF }} etc.
+    # The || fallbacks ensure PR runs (where inputs are empty) use defaults.
+    env:
+      LLVM_REF: ${{ inputs.llvm_ref || 'main' }}
+      ELD_REF:  ${{ inputs.eld_ref  || 'main' }}
+
+    steps:
+      - name: Checkout repository (for cmake/caches and config files)
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Free up disk space — the default ubuntu-latest image ships ~30 GB of
+      # pre-installed software we don't need (Android SDK, .NET, etc.).
+      # -----------------------------------------------------------------------
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
+      # -----------------------------------------------------------------------
+      # Host build dependencies
+      # -----------------------------------------------------------------------
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            clang \
+            libc++-dev \
+            libc++abi-dev \
+            python3 \
+            zlib1g-dev \
+            libzstd-dev \
+            zstd \
+            ccache \
+            git \
+            lsb-release
+
+      # -----------------------------------------------------------------------
+      # Clone sources
+      # -----------------------------------------------------------------------
+      - name: Clone llvm-project (${{ env.LLVM_REF }})
+        run: |
+          git clone \
+            --depth 1 \
+            --branch "${{ env.LLVM_REF }}" \
+            https://github.com/llvm/llvm-project.git \
+            llvm-project
+
+      - name: Clone ELD into llvm-project/eld (${{ env.ELD_REF }})
+        run: |
+          git clone \
+            --depth 1 \
+            --branch "${{ env.ELD_REF }}" \
+            https://github.com/qualcomm/eld.git \
+            llvm-project/eld
+
+      # -----------------------------------------------------------------------
+      # Configure LLVM/Clang + ELD
+      # Settings are inlined directly rather than using the repo's cmake cache
+      # files (hexagon-stage0.cmake / hexagon-stage0-cross.cmake) because those
+      # set DEFAULT_SYSROOT to "../target/hexagon-unknown-linux-musl/" which
+      # causes clang's getEffectiveSysRoot() to return the (non-existent) musl
+      # sysroot even for --cstdlib=picolibc, preventing picolibc headers from
+      # being found.  With no DEFAULT_SYSROOT, the Hexagon driver correctly
+      # resolves picolibc to bin/../target/picolibc/<triple>/.
+      # -----------------------------------------------------------------------
+      - name: Configure LLVM/Clang + ELD
+        run: |
+          cmake -G Ninja \
+            -DCMAKE_INSTALL_PREFIX="${TC_ROOT}/Tools" \
+            -DCMAKE_C_COMPILER=clang \
+            -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_CXX_FLAGS="-stdlib=libc++" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=1 \
+            -DCMAKE_INSTALL_RPATH="\$ORIGIN/../lib" \
+            -DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=ON \
+            -DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON \
+            -DLLVM_TARGETS_TO_BUILD="Hexagon" \
+            -DLLVM_ENABLE_PROJECTS="clang" \
+            -DLLVM_ENABLE_PIC=ON \
+            -DLLVM_BUILD_LLVM_DYLIB=OFF \
+            -DLLVM_LINK_LLVM_DYLIB=OFF \
+            -DLLVM_BUILD_RUNTIME=OFF \
+            -DLIBCLANG_BUILD_STATIC=ON \
+            -DLLVM_VERSION_SUFFIX="" \
+            -DLLVM_DEFAULT_TARGET_TRIPLE="hexagon-unknown-none-elf" \
+            -DLLVM_ENABLE_LIBCXX=ON \
+            -DLLVM_ENABLE_ASSERTIONS=ON \
+            -DLLVM_CCACHE_BUILD=ON \
+            -DLLVM_INSTALL_TOOLCHAIN_ONLY=OFF \
+            -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_INCLUDE_DOCS=OFF \
+            -DLLVM_INCLUDE_BENCHMARKS=OFF \
+            -DLLVM_BUILD_BENCHMARKS=OFF \
+            -DLLVM_ENABLE_ZLIB=ON \
+            -DLLVM_ENABLE_ZSTD=ON \
+            -DCLANG_DEFAULT_CXX_STDLIB="libc++" \
+            -DCLANG_DEFAULT_RTLIB="compiler-rt" \
+            -DCLANG_DEFAULT_UNWINDLIB="libunwind" \
+            -DCLANG_DEFAULT_OBJCOPY="llvm-objcopy" \
+            -DLLVM_EXTERNAL_PROJECTS=eld \
+            -DLLVM_EXTERNAL_ELD_SOURCE_DIR="${GITHUB_WORKSPACE}/llvm-project/eld" \
+            -DELD_ENABLE_SYMBOL_VERSIONING=ON \
+            -DELD_TARGETS_TO_BUILD=Hexagon \
+            -DLLVM_DISTRIBUTION_COMPONENTS="clang;clang-resource-headers;llvm-ar;llvm-config;llvm-cov;llvm-cxxfilt;llvm-dwarfdump;llvm-mc;llvm-nm;llvm-objcopy;llvm-objdump;llvm-profdata;llvm-ranlib;llvm-readobj;llvm-size;llvm-strings;llvm-strip;llvm-symbolizer" \
+            -B obj_llvm \
+            -S llvm-project/llvm
+
+      # -----------------------------------------------------------------------
+      # Build and install
+      # -----------------------------------------------------------------------
+      - name: Build and install clang/llvm-tools (install-distribution)
+        run: cmake --build obj_llvm --target install-distribution
+
+      - name: Build and install ELD (install-ld.eld)
+        run: cmake --build obj_llvm --target install-ld.eld
+
+      # -----------------------------------------------------------------------
+      # Create symlinks required by the picolibc meson cross-file.
+      # The cross-file hardcodes these four tool names and 'eld' as the
+      # linker; cmake install provides the llvm-* originals but not the
+      # hexagon-* aliases or the bare 'eld' name.
+      # The clang/clang++ scripts fall back to plain 'clang'/'clang++'
+      # automatically, so no hexagon-clang symlink is needed.
+      # -----------------------------------------------------------------------
+      - name: Create symlinks for picolibc meson cross-file tools
+        run: |
+          BIN="${TC_ROOT}/Tools/bin"
+
+          ln -sf --relative "${BIN}/llvm-ar"      "${BIN}/hexagon-ar"
+          ln -sf --relative "${BIN}/llvm-nm"      "${BIN}/hexagon-nm"
+          ln -sf llvm-strip                        "${BIN}/hexagon-strip"
+          ln -sf --relative "${BIN}/llvm-objcopy" "${BIN}/hexagon-llvm-objcopy"
+
+          # 'eld' bare name — required by the picolibc meson cross-file
+          # (c_ld = 'eld') which meson resolves via PATH.
+          if [[ -e "${BIN}/ld.eld" ]]; then
+            ln -sf --relative "${BIN}/ld.eld" "${BIN}/eld"
+          fi
+
+          echo "Symlinks created in ${BIN}:"
+          ls -la "${BIN}" | grep -E "^l"
+
+      # -----------------------------------------------------------------------
+      # Package and upload the toolchain
+      # -----------------------------------------------------------------------
+      - name: Package toolchain
+        run: |
+          tar \
+            --use-compress-program "zstd -T0 -9" \
+            -cf hexagon-toolchain.tar.zst \
+            -C "${TC_ROOT}" \
+            Tools
+          du -sh hexagon-toolchain.tar.zst
+
+      - name: Upload toolchain artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexagon-toolchain
+          path: hexagon-toolchain.tar.zst
+          retention-days: 3
+
+# ---------------------------------------------------------------------------
+# Job B: build-qemu
+# ---------------------------------------------------------------------------
+  build-qemu:
+    name: Build qemu-system-hexagon (${{ inputs.qemu_ref || 'hexagon-sysemu-11-nov-2025' }})
+    runs-on: ubuntu-latest
+
+    env:
+      QEMU_REF: ${{ inputs.qemu_ref || 'hexagon-sysemu-11-nov-2025' }}
+
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
+      # QEMU's configure script requires a broad set of host libraries.
+      - name: Install QEMU build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            git \
+            ninja-build \
+            python3 \
+            python3-pip \
+            python3-venv \
+            pkg-config \
+            libglib2.0-dev \
+            libslirp-dev \
+            libpixman-1-dev \
+            libcap-ng-dev \
+            libattr1-dev \
+            libzstd-dev \
+            zlib1g-dev \
+            flex \
+            bison
+
+      - name: Clone quic/qemu (${{ env.QEMU_REF }})
+        run: |
+          git clone \
+            --depth 1 \
+            --branch "${{ env.QEMU_REF }}" \
+            https://github.com/quic/qemu.git \
+            qemu
+
+      # Build hexagon-softmmu with fdt bundled internally so the binary has
+      # no libfdt.so runtime dependency when downloaded in build-sysroot.
+      # Docs are disabled to avoid heavy doc-build toolchain requirements.
+      - name: Configure QEMU (hexagon-softmmu)
+        run: |
+          mkdir obj_qemu
+          cd obj_qemu
+          ../qemu/configure \
+            --target-list=hexagon-softmmu \
+            --prefix="${GITHUB_WORKSPACE}/qemu-install" \
+            --enable-fdt=internal \
+            --disable-docs \
+            --disable-containers \
+            --extra-cflags="-Wno-error=misleading-indentation"
+
+      - name: Build and install QEMU
+        run: |
+          make -C obj_qemu -j$(nproc)
+          make -C obj_qemu install
+
+      - name: Verify qemu-system-hexagon
+        run: |
+          "${GITHUB_WORKSPACE}/qemu-install/bin/qemu-system-hexagon" --version
+
+      - name: Package qemu-system-hexagon
+        run: |
+          tar \
+            --use-compress-program "zstd -T0 -9" \
+            -cf qemu-hexagon.tar.zst \
+            -C "${GITHUB_WORKSPACE}/qemu-install" \
+            bin/qemu-system-hexagon
+          du -sh qemu-hexagon.tar.zst
+
+      - name: Upload qemu artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-hexagon
+          path: qemu-hexagon.tar.zst
+          retention-days: 3
+
+# ---------------------------------------------------------------------------
+# Job C: build-sysroot
+# ---------------------------------------------------------------------------
+  build-sysroot:
+    name: Build Hexagon Sysroot (builtins + picolibc + H2 + runtimes)
+    runs-on: ubuntu-latest
+    needs: [build-toolchain, build-qemu]
+
+    env:
+      LLVM_REF:     ${{ inputs.llvm_ref     || 'main' }}
+      PICOLIBC_REF: ${{ inputs.picolibc_ref || 'main' }}
+      H2_REPO:      ${{ inputs.h2_repo      || 'https://github.com/quic-k/hexagon-hypervisor' }}
+      H2_REF:       ${{ inputs.h2_ref       || 'upstream-toolchain' }}
+      BUILD_CORES:  ${{ inputs.build_cores  || 'v68' }}
+      ALL_CORES:    ${{ inputs.all_cores    || 'v68 v69 v71 v71t v73 v75 v77 v79 v81 v83 v85 v87 v89 v91' }}
+
+    steps:
+      - name: Checkout repository (for the sysroot-scripts/ directory)
+        uses: actions/checkout@v4
+
+      # -----------------------------------------------------------------------
+      # Free up disk space
+      # -----------------------------------------------------------------------
+      - name: Free disk space
+        run: |
+          sudo rm -rf \
+            /usr/local/lib/android \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/.ghcup \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+          df -h
+
+      # -----------------------------------------------------------------------
+      # Host build dependencies
+      # -----------------------------------------------------------------------
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            make \
+            python3-pip \
+            git \
+            zstd \
+            libc++1 \
+            libc++abi1 \
+            libglib2.0-0
+          pip3 install --quiet meson
+
+      # -----------------------------------------------------------------------
+      # Restore the toolchain built in Job A.
+      # Extracts into TC_ROOT/Tools/ so:
+      #   TOOLCHAIN  = TC_ROOT/Tools          (bin/clang lives here)
+      #   INSTALLPATH = TC_ROOT               (scripts write to INSTALLPATH/Tools/...)
+      # Each script installs into TC_ROOT/Tools/target/picolibc/ — exactly
+      # where clang's DEFAULT_SYSROOT resolves, so each successive script
+      # can use the libraries installed by the previous one.
+      # -----------------------------------------------------------------------
+      - name: Download toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: hexagon-toolchain
+          path: ${{ github.workspace }}
+
+      - name: Extract toolchain
+        run: |
+          mkdir -p "${TC_ROOT}"
+          tar \
+            --use-compress-program "zstd -d" \
+            -xf hexagon-toolchain.tar.zst \
+            -C "${TC_ROOT}"
+          echo "Toolchain bin contents:"
+          ls "${TC_ROOT}/Tools/bin" | head -20
+
+      - name: Add toolchain to PATH
+        run: echo "${TC_ROOT}/Tools/bin" >> "$GITHUB_PATH"
+
+      # -----------------------------------------------------------------------
+      # Restore qemu-system-hexagon built in Job B
+      # -----------------------------------------------------------------------
+      - name: Download qemu artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-hexagon
+          path: ${{ github.workspace }}
+
+      - name: Extract and add qemu-system-hexagon to PATH
+        run: |
+          tar \
+            --use-compress-program "zstd -d" \
+            -xf qemu-hexagon.tar.zst \
+            -C "$GITHUB_WORKSPACE"
+          echo "${GITHUB_WORKSPACE}/bin" >> "$GITHUB_PATH"
+          echo "qemu-system-hexagon version:"
+          "${GITHUB_WORKSPACE}/bin/qemu-system-hexagon" --version
+
+      # -----------------------------------------------------------------------
+      # Clone sources needed by the four scripts
+      # -----------------------------------------------------------------------
+      - name: Clone llvm-project (${{ env.LLVM_REF }}) for compiler-rt + runtimes
+        run: |
+          git clone \
+            --depth 1 \
+            --branch "${{ env.LLVM_REF }}" \
+            https://github.com/llvm/llvm-project.git \
+            sources/llvm-project
+
+      - name: Clone picolibc (${{ env.PICOLIBC_REF }})
+        run: |
+          git clone \
+            --depth 1 \
+            --branch "${{ env.PICOLIBC_REF }}" \
+            https://github.com/picolibc/picolibc.git \
+            sources/picolibc
+
+      - name: Clone H2 / hexagon-hypervisor (${{ env.H2_REPO }}@${{ env.H2_REF }})
+        run: |
+          git clone \
+            --depth 1 \
+            --branch "${{ env.H2_REF }}" \
+            "${{ env.H2_REPO }}" \
+            sources/hexagon-hypervisor
+
+      # -----------------------------------------------------------------------
+      # Shared environment for all four scripts.
+      # TOOLCHAIN = TC_ROOT/Tools  (bin/clang, bin/hexagon-ar, etc.)
+      # INSTALLPATH = TC_ROOT      (scripts write to INSTALLPATH/Tools/target/...)
+      # This ensures each script's output is immediately visible to clang for
+      # the next script (e.g. picolibc headers available when building H2).
+      # -----------------------------------------------------------------------
+      - name: Set sysroot build environment
+        run: |
+          echo "TOOLCHAIN=${TC_ROOT}/Tools"                             >> "$GITHUB_ENV"
+          echo "SOURCECODE=${GITHUB_WORKSPACE}/sources/llvm-project"   >> "$GITHUB_ENV"
+          echo "PICOLIBC_SRC=${GITHUB_WORKSPACE}/sources/picolibc"     >> "$GITHUB_ENV"
+          echo "H2_SRC=${GITHUB_WORKSPACE}/sources/hexagon-hypervisor" >> "$GITHUB_ENV"
+          echo "BUILDPATH=${GITHUB_WORKSPACE}/build"                   >> "$GITHUB_ENV"
+          echo "INSTALLPATH=${TC_ROOT}"                                 >> "$GITHUB_ENV"
+          echo "BUILD_CORES=${BUILD_CORES}"                            >> "$GITHUB_ENV"
+          echo "ALL_CORES=${ALL_CORES}"                                >> "$GITHUB_ENV"
+          echo "JOBS=$(nproc)"                                         >> "$GITHUB_ENV"
+
+      # -----------------------------------------------------------------------
+      # Step 1 of 4: compiler-rt builtins
+      # -----------------------------------------------------------------------
+      - name: '[1/4] Build compiler-rt builtins'
+        run: bash sysroot-scripts/build_hexagon_builtins.sh
+
+      # -----------------------------------------------------------------------
+      # Step 2 of 4: picolibc
+      # -----------------------------------------------------------------------
+      - name: '[2/4] Build picolibc'
+        run: bash sysroot-scripts/build_hexagon_picolibc.sh
+
+      # -----------------------------------------------------------------------
+      # Step 3 of 4: H2 libraries
+      # -----------------------------------------------------------------------
+      - name: '[3/4] Build H2 libraries'
+        run: bash sysroot-scripts/build_hexagon_h2.sh
+
+      # -----------------------------------------------------------------------
+      # Step 4 of 4: runtimes (libunwind, libc++abi, libc++)
+      # -----------------------------------------------------------------------
+      - name: '[4/4] Build runtimes (libunwind + libc++abi + libc++)'
+        run: bash sysroot-scripts/build_hexagon_runtimes.sh
+
+      # -----------------------------------------------------------------------
+      # Package and upload the sysroot subtree only.
+      # The full toolchain (bin/, lib/, etc.) is not re-uploaded; only the
+      # newly built target/picolibc/<triple>/ trees are shipped as the artifact.
+      # -----------------------------------------------------------------------
+      - name: Show sysroot install tree
+        run: |
+          echo "=== Sysroot install tree ==="
+          find "${TC_ROOT}/Tools/target/picolibc" -type f | sort
+          echo ""
+          echo "=== Disk usage ==="
+          du -sh "${TC_ROOT}/Tools/target/picolibc"
+
+      - name: Package sysroot
+        run: |
+          SYSROOT_TARBALL="hexagon-sysroot-${{ github.sha }}.tar.zst"
+          tar \
+            --use-compress-program "zstd -T0 -9" \
+            -chf "${SYSROOT_TARBALL}" \
+            -C "${TC_ROOT}/Tools/target" \
+            picolibc
+          echo "SYSROOT_TARBALL=${SYSROOT_TARBALL}" >> "$GITHUB_ENV"
+          du -sh "${SYSROOT_TARBALL}"
+
+      - name: Upload sysroot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hexagon-sysroot
+          path: ${{ env.SYSROOT_TARBALL }}
+          retention-days: 14
