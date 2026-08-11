@@ -294,7 +294,7 @@ build_musl_scs() {
 		STRIP=llvm-strip \
 		CC=${TOOLCHAIN_INSTALL}/${NATIVE_TRIPLE}/bin/hexagon-unknown-linux-musl-clang \
 		LIBCC="${RESOURCE_DIR}/lib/hexagon-unknown-linux-musl/libclang_rt.builtins.a" \
-		CFLAGS="${MUSL_CFLAGS} ${SCS_CFLAGS} -D__HEXAGON_SCS_THREADS__" \
+		CFLAGS="${MUSL_CFLAGS} ${SCS_CFLAGS} -D__HEXAGON_SCS_THREADS__ -D__HEXAGON_SCS_REG=${SCS_REG}" \
 		./configure --target=hexagon --prefix=${SCS_STAGING}
 	PATH=${TOOLCHAIN_INSTALL}/${NATIVE_TRIPLE}/bin/:$PATH make -j install
 
@@ -302,6 +302,17 @@ build_musl_scs() {
 	# musl folds libm/libpthread/etc. into libc; only libc.a/libc.so exist.
 	cp -a ${SCS_STAGING}/lib/libc.a  ${HEX_TOOLS_TARGET_BASE}/lib/scs/
 	cp -a ${SCS_STAGING}/lib/libc.so ${HEX_TOOLS_TARGET_BASE}/lib/scs/ 2>/dev/null || true
+
+	# The driver resolves startup objects from the selected multilib dir, so
+	# every object it can ask for has to exist in scs/ or the link fails
+	# outright: crt1.o for the default and -static-pie links, rcrt1.o for
+	# -static, crti.o/crtn.o for -shared.  These come from the instrumented
+	# musl build, whose arch/hexagon/crt_arch.h sets the SCS register up
+	# before the first instrumented function runs (see build_crt_scs, which
+	# overwrites crt1.o with the standalone equivalent).
+	for o in rcrt1.o Scrt1.o crti.o crtn.o; do
+		cp -a ${SCS_STAGING}/lib/${o} ${HEX_TOOLS_TARGET_BASE}/lib/scs/ 2>/dev/null || true
+	done
 }
 
 build_runtimes_scs() {
@@ -351,22 +362,27 @@ build_runtimes_scs() {
 }
 
 build_crt_scs() {
-	# Shadow-call-stack startup object: musl's crt1 plus r19 (shadow-stack
-	# pointer) init in _start, so whole-program -fsanitize=shadow-call-stack
+	# Shadow-call-stack startup object: musl's crt1 plus shadow-stack pointer
+	# init in _start, so whole-program -fsanitize=shadow-call-stack
 	# runs (musl's instrumented __libc_start_main/.init_array would otherwise
-	# use r19 before anything sets it -> startup SEGV). Installed as
-	# usr/lib/scs/crt1.o; the Hexagon driver selects it for the scs multilib.
-	# Compiled WITHOUT the SCS flags (this object must not be instrumented).
+	# use the SCS register before anything sets it -> startup SEGV). Installed
+	# as usr/lib/scs/crt1.o; the driver selects it for the scs multilib.
+	# Compiled WITHOUT the SCS flags (this object must not be instrumented),
+	# but with the same SCS register the instrumented code was built for.
 	cd ${BASE}
 	mkdir -p ${HEX_TOOLS_TARGET_BASE}/lib/scs
 	${TOOLCHAIN_BIN}/hexagon-unknown-linux-musl-clang \
-		-G0 -O2 -fPIC -DCRT -c ${BASE}/hexagon-scs-crt1.c \
+		-G0 -O2 -fPIC -DCRT -DHEXAGON_SCS_REG=${SCS_REG} \
+		-c ${BASE}/hexagon-scs-crt1.c \
 		-o ${HEX_TOOLS_TARGET_BASE}/lib/scs/crt1.o
-	# The driver resolves startup objects from the selected multilib dir, so the
-	# scs multilib must also provide crti.o (used for -shared links). crti.o is
-	# plain _init-prologue asm with no shadow-call-stack component, so the base
-	# copy is correct here.
-	cp -a ${HEX_TOOLS_TARGET_BASE}/lib/crti.o ${HEX_TOOLS_TARGET_BASE}/lib/scs/crti.o
+	# crti.o/crtn.o normally arrive from the instrumented musl build above;
+	# fall back to the base copies if that build did not produce them. They are
+	# plain _init/_fini-prologue asm with no shadow-call-stack component, so
+	# either copy is correct.
+	for o in crti.o crtn.o; do
+		[[ -e ${HEX_TOOLS_TARGET_BASE}/lib/scs/${o} ]] || \
+			cp -a ${HEX_TOOLS_TARGET_BASE}/lib/${o} ${HEX_TOOLS_TARGET_BASE}/lib/scs/${o}
+	done
 }
 
 build_scs_multilib() {
@@ -597,9 +613,11 @@ MUSL_CFLAGS="${MUSL_CFLAGS} -Wno-switch-bool"
 MUSL_CFLAGS="${MUSL_CFLAGS} -Wno-unsupported-floating-point-opt"
 
 # Flags for the shadow-call-stack multilib (usr/lib/scs).  On Hexagon,
-# -fsanitize=shadow-call-stack reserves r19 as the shadow-stack pointer and
-# the driver errors unless -ffixed-r19 is also supplied.
-SCS_CFLAGS="-fsanitize=shadow-call-stack -ffixed-r19"
+# -fsanitize=shadow-call-stack uses r18 as the shadow-stack pointer by default
+# (selectable with -mscs-reg=<reg>) and the backend errors unless the register
+# is also reserved with -ffixed-<reg>.
+SCS_REG=${SCS_REG:-r18}
+SCS_CFLAGS="-fsanitize=shadow-call-stack -mscs-reg=${SCS_REG} -ffixed-${SCS_REG}"
 
 which clang
 clang --version
