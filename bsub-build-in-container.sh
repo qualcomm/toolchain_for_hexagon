@@ -177,7 +177,6 @@ run_payload() {
     echo "Copying build files to workspace..."
     cp "${SCRIPT_DIR}/get-src-tarballs.sh" "${WORK_DIR}/"
     cp "${SCRIPT_DIR}/build-toolchain.sh" "${WORK_DIR}/"
-    cp "${SCRIPT_DIR}/hexagon-scs-crt1.c" "${WORK_DIR}/"
     cp "${SCRIPT_DIR}/build-buildroot.sh" "${WORK_DIR}/"
     cp "${SCRIPT_DIR}/test-toolchain.sh" "${WORK_DIR}/"
     cp "${SCRIPT_DIR}"/*.cmake "${WORK_DIR}/"
