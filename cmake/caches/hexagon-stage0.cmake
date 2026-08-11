@@ -176,20 +176,36 @@ set(RUNTIMES_hexagon-unknown-linux-musl_SANITIZER_CXX_ABI "libc++" CACHE STRING 
 set(RUNTIMES_hexagon-unknown-linux-musl_SANITIZER_CXX_ABI_INTREE ON CACHE BOOL "")
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_BUILTINS OFF CACHE BOOL "")
 # sanitizer_common's struct-stat64-on-musl issue is fixed as of
-# llvmorg-23.1.0-rc1 (the release this cache targets), so RTSan/TySan/Scudo/
-# GWP-ASan -- all of which pull in sanitizer_common -- can now be built.
-# hexagon is already present in each feature's ALL_<X>_SUPPORTED_ARCH list in
-# compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake, so no arch-list patch
-# is needed. Scope COMPILER_RT_SANITIZERS_TO_BUILD to just these 4 features
-# (default is "all", which would also pull in asan/msan/tsan/hwasan/dfsan/
-# nsan/cfi/safestack/ubsan_minimal/asan_abi -- untested on Hexagon).
-# Shadow-call-stack is a pure codegen+linker feature (-ffixed-r19, no
-# compiler-rt runtime component) and kcfi is kernel-only; neither needs a
+# llvmorg-23.1.0-rc1, so every feature that pulls in sanitizer_common can be
+# built. hexagon is already present in each feature's ALL_<X>_SUPPORTED_ARCH
+# list in compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake, so no arch-list
+# patch is needed.
+#
+# COMPILER_RT_SANITIZERS_TO_BUILD is scoped rather than left at "all" because
+# the remaining entries have no Hexagon support: msan/tsan/hwasan/dfsan/nsan
+# omit hexagon from their ALL_<X>_SUPPORTED_ARCH lists, and asan_abi is
+# Darwin-only.  Everything listed here is exercised by examples/ and is
+# expected to link and run:
+#   asan               -fsanitize=address (shadow scale 3 / offset 0x20000000,
+#                      matching llvm's kDefaultShadowOffset32 for 32-bit)
+#   safestack          -fsanitize=safe-stack -- needs the musl fix that also
+#                      runs __safestack_init from a constructor, since musl
+#                      does not honour .preinit_array (upstream in compiler-rt)
+#   cfi                cross-DSO CFI; plain -fsanitize=cfi-icall needs no
+#                      runtime, only the cfi_ignorelist.txt installed by the
+#                      sanitizer-ignorelists target
+#   rtsan tysan scudo_standalone gwp_asan
+# ubsan and lsan are not list members -- compiler-rt builds them unconditionally
+# alongside sanitizer_common (see compiler-rt/lib/CMakeLists.txt).
+# Shadow-call-stack is a pure codegen+linker feature (a reserved register, no
+# compiler-rt runtime component) and kcfi is codegen-only; neither needs a
 # COMPILER_RT_BUILD_* flag here.
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_SANITIZERS ON CACHE BOOL "")
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_SANITIZERS_TO_BUILD
-    "rtsan;tysan;scudo_standalone;gwp_asan" CACHE STRING "")
-set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_XRAY OFF CACHE BOOL "")
+    "asan;safestack;cfi;rtsan;tysan;scudo_standalone;gwp_asan" CACHE STRING "")
+# XRay: the Hexagon PIC/trampoline/sled fixes are upstream, so the runtime
+# builds and works (see examples/xray).
+set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_XRAY ON CACHE BOOL "")
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_MEMPROF OFF CACHE BOOL "")
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_CTX_PROFILE OFF CACHE BOOL "")
 # LibFuzzer builds its own private copy of libc++ with -fno-exceptions, which is
@@ -198,6 +214,6 @@ set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_CTX_PROFILE OFF CACHE 
 # assignment operator, so the assembler rejects it:
 #   overridable_function.h: error: unrecognized instruction
 #     1 |  _ZNSt3__110__impl_refIXadL_ZnwjEEE7__impl_...Ej = _Znwj
-# Fix in flight upstream (spell it `.set sym, expr` on Hexagon); re-enable once
-# that lands, expected in 23.1.0-rc2.
+# Still unfixed as of llvm-project main (libcxx/src/include/overridable_function.h
+# emits `%cc0 = %cc1`); re-enable once Hexagon spells it `.set sym, expr`.
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_LIBFUZZER OFF CACHE BOOL "")
