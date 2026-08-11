@@ -364,6 +364,46 @@ build_runtimes_scs() {
 	fi
 }
 
+populate_sanitizer_multilibs() {
+	# The Hexagon driver declares three musl multilibs -- msan, asan and scs
+	# (see HexagonToolChain's constructor) -- and selecting any of them changes
+	# where BOTH the startup objects and the compiler-rt runtimes are looked up:
+	#
+	#   * Hexagon.cpp's StartFile() builds "${SysRoot}/usr/lib${suffix}/crt1.o"
+	#     with no existence check and no fallback, and
+	#   * HexagonToolChain::getCompilerRTPath() appends the same suffix, so
+	#     getCompilerRT() stops finding libclang_rt.<x>-hexagon.a in usr/lib.
+	#
+	# compiler-rt is deliberately built once, uninstrumented, into usr/lib (the
+	# runtimes are interposition/bookkeeping code; there is no reason to build a
+	# shadow-call-stack copy of them).  So without this step:
+	#
+	#   -fsanitize=address              -> cannot open usr/lib/asan/crt1.o
+	#   -fsanitize=shadow-call-stack,undefined
+	#                                  -> cannot open libclang_rt.ubsan_standalone.a
+	#
+	# i.e. ASan is unusable and the scs multilib cannot be combined with any
+	# runtime-backed sanitizer.  Mirror what each multilib is missing.
+	for ml in asan scs; do
+		mldir=${HEX_TOOLS_TARGET_BASE}/lib/${ml}
+		mkdir -p ${mldir}
+		# Startup objects: the scs multilib builds its own (instrumented, with
+		# the SCS register set up before any instrumented code runs), so only
+		# fill in what is absent.  asan needs no instrumented libc -- it works
+		# by interposing at run time -- so the base objects are correct there.
+		for o in crt1.o rcrt1.o Scrt1.o crti.o crtn.o; do
+			[[ -e ${HEX_TOOLS_TARGET_BASE}/lib/${o} && ! -e ${mldir}/${o} ]] && \
+				ln -sf --relative ${HEX_TOOLS_TARGET_BASE}/lib/${o} ${mldir}/${o}
+		done
+		# compiler-rt runtimes, including the .syms link-order files the driver
+		# passes via --dynamic-list.
+		for f in ${HEX_TOOLS_TARGET_BASE}/lib/libclang_rt.*; do
+			[[ -e ${f} ]] || continue
+			ln -sf --relative ${f} ${mldir}/$(basename ${f})
+		done
+	done
+}
+
 build_scs_multilib() {
 	# build_musl_scs must run first: it installs the startup objects into
 	# usr/lib/scs, and build_runtimes_scs configures with
@@ -642,9 +682,23 @@ build_runtimes
 #build_sanitizers
 
 # Shadow-call-stack multilib (usr/lib/scs).  Non-fatal: a failure here should
-# not discard the whole toolchain -- the base libraries in usr/lib still work,
-# and the driver's scs multilib falls back to them for anything missing.
-build_scs_multilib || echo "WARNING: build_scs_multilib failed (non-fatal); usr/lib/scs may be incomplete"
+# not discard the whole toolchain -- everything that does not use
+# -fsanitize=shadow-call-stack still works.  It is NOT a soft degradation for
+# SCS itself, though: Hexagon.cpp's StartFile() resolves crt1.o from
+# usr/lib/scs unconditionally, with no fallback to usr/lib, so an incomplete
+# scs/ leaves every SCS link failing.  Say so loudly rather than shipping a
+# toolchain whose advertised feature silently does not link.
+if ! build_scs_multilib; then
+	SCS_MULTILIB_FAILED=1
+	echo "WARNING: build_scs_multilib failed; usr/lib/scs is incomplete and" >&2
+	echo "WARNING: -fsanitize=shadow-call-stack will NOT link with this toolchain." >&2
+fi
+
+# Fill in the startup objects and compiler-rt runtimes that the driver expects
+# to find under each selected multilib.  Must run after build_runtimes (which
+# installs compiler-rt) and after build_scs_multilib (which creates usr/lib/scs
+# and its own instrumented startup objects).
+populate_sanitizer_multilibs
 
 build_picolibc
 install_baremetal_cfg
