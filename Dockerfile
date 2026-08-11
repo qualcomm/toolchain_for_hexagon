@@ -107,7 +107,7 @@ ENV CROSS_TRIPLES_PIC "x86_64-linux-gnu aarch64-linux-gnu"
 # Windows/macOS zig cross-builds disabled: LLVMSupport.a missing platform
 # implementations causes link failures (llvm-config.exe, llvm-ar.exe, etc.)
 ENV CROSS_TRIPLES_DYLIB ""
-ADD build-toolchain.sh tar-strip-symlink-modes.py hexagon-scs-crt1.c /root/hexagon-toolchain/
+ADD build-toolchain.sh tar-strip-symlink-modes.py /root/hexagon-toolchain/
 RUN cd /root/hexagon-toolchain && ./build-toolchain.sh ${ARTIFACT_TAG}
 
 ADD build-buildroot.sh /root/hexagon-toolchain/build-buildroot.sh

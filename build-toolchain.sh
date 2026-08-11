@@ -305,12 +305,15 @@ build_musl_scs() {
 
 	# The driver resolves startup objects from the selected multilib dir, so
 	# every object it can ask for has to exist in scs/ or the link fails
-	# outright: crt1.o for the default and -static-pie links, rcrt1.o for
-	# -static, crti.o/crtn.o for -shared.  These come from the instrumented
-	# musl build, whose arch/hexagon/crt_arch.h sets the SCS register up
-	# before the first instrumented function runs (see build_crt_scs, which
-	# overwrites crt1.o with the standalone equivalent).
-	for o in rcrt1.o Scrt1.o crti.o crtn.o; do
+	# outright: crt1.o for a default link, rcrt1.o for -static -pie, and
+	# crti.o/crtn.o for -shared.
+	#
+	# These are correct as built: musl's arch/hexagon/crt_arch.h points the SCS
+	# register at a per-entry-point shadow stack before the first instrumented
+	# function runs, so crt1.o, Scrt1.o and rcrt1.o each set it up, as does
+	# ldso/dlstart.c inside libc.so.  crti.o/crtn.o are plain _init/_fini
+	# prologue asm with no shadow-call-stack component.
+	for o in crt1.o rcrt1.o Scrt1.o crti.o crtn.o; do
 		cp -a ${SCS_STAGING}/lib/${o} ${HEX_TOOLS_TARGET_BASE}/lib/scs/ 2>/dev/null || true
 	done
 }
@@ -361,39 +364,15 @@ build_runtimes_scs() {
 	fi
 }
 
-build_crt_scs() {
-	# Shadow-call-stack startup object: musl's crt1 plus shadow-stack pointer
-	# init in _start, so whole-program -fsanitize=shadow-call-stack
-	# runs (musl's instrumented __libc_start_main/.init_array would otherwise
-	# use the SCS register before anything sets it -> startup SEGV). Installed
-	# as usr/lib/scs/crt1.o; the driver selects it for the scs multilib.
-	# Compiled WITHOUT the SCS flags (this object must not be instrumented),
-	# but with the same SCS register the instrumented code was built for.
-	cd ${BASE}
-	mkdir -p ${HEX_TOOLS_TARGET_BASE}/lib/scs
-	${TOOLCHAIN_BIN}/hexagon-unknown-linux-musl-clang \
-		-G0 -O2 -fPIC -DCRT -DHEXAGON_SCS_REG=${SCS_REG} \
-		-c ${BASE}/hexagon-scs-crt1.c \
-		-o ${HEX_TOOLS_TARGET_BASE}/lib/scs/crt1.o
-	# crti.o/crtn.o normally arrive from the instrumented musl build above;
-	# fall back to the base copies if that build did not produce them. They are
-	# plain _init/_fini-prologue asm with no shadow-call-stack component, so
-	# either copy is correct.
-	for o in crti.o crtn.o; do
-		[[ -e ${HEX_TOOLS_TARGET_BASE}/lib/scs/${o} ]] || \
-			cp -a ${HEX_TOOLS_TARGET_BASE}/lib/${o} ${HEX_TOOLS_TARGET_BASE}/lib/scs/${o}
-	done
-}
-
 build_scs_multilib() {
-	build_musl_scs
-	# crt1.o/crti.o must be installed into usr/lib/scs before build_runtimes_scs:
-	# that build configures with -fsanitize=shadow-call-stack, which makes the
-	# driver select the scs multilib, so CMake's compiler feature tests (which
-	# link a full executable) fail with "cannot open .../usr/lib/scs/crt1.o".
-	# CXX_SUPPORTS_FNO_EXCEPTIONS_FLAG then comes back Failed and libunwind's
+	# build_musl_scs must run first: it installs the startup objects into
+	# usr/lib/scs, and build_runtimes_scs configures with
+	# -fsanitize=shadow-call-stack, which makes the driver select the scs
+	# multilib.  Without crt1.o there, CMake's compiler feature tests (which
+	# link a full executable) fail with "cannot open .../usr/lib/scs/crt1.o",
+	# CXX_SUPPORTS_FNO_EXCEPTIONS_FLAG comes back Failed, and libunwind's
 	# CMakeLists aborts the whole configure.
-	build_crt_scs
+	build_musl_scs
 	build_runtimes_scs
 }
 
