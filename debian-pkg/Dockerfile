@@ -14,9 +14,9 @@ FROM ubuntu:24.04
 ARG DEBIAN_FRONTEND=noninteractive
 
 # ── Build arguments (override at build time) ────────────────────────
-ARG VER=23.1.0-rc1
+ARG VER=23.1.1
 ARG LLVM_SRC_URL=https://github.com/llvm/llvm-project/archive/llvmorg-${VER}.tar.gz
-ARG MUSL_SRC_URL=https://github.com/quic/musl/archive/hexagon-v1.2.4-jul-2026.tar.gz
+ARG MUSL_SRC_URL=https://github.com/quic/musl/archive/hexagon-v1.2.4-sep-2026.tar.gz
 ARG LINUX_SRC_URL=https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.5.tar.xz
 ARG PICOLIBC_SRC_URL=https://github.com/picolibc/picolibc/releases/download/1.8.11/picolibc-1.8.11.tar.xz
 

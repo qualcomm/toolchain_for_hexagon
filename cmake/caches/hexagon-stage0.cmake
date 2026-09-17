@@ -176,7 +176,7 @@ set(RUNTIMES_hexagon-unknown-linux-musl_SANITIZER_CXX_ABI "libc++" CACHE STRING 
 set(RUNTIMES_hexagon-unknown-linux-musl_SANITIZER_CXX_ABI_INTREE ON CACHE BOOL "")
 set(RUNTIMES_hexagon-unknown-linux-musl_COMPILER_RT_BUILD_BUILTINS OFF CACHE BOOL "")
 # sanitizer_common's struct-stat64-on-musl issue is fixed as of
-# llvmorg-23.1.0-rc1, so every feature that pulls in sanitizer_common can be
+# llvmorg-23.1.1, so every feature that pulls in sanitizer_common can be
 # built. hexagon is already present in each feature's ALL_<X>_SUPPORTED_ARCH
 # list in compiler-rt/cmake/Modules/AllSupportedArchDefs.cmake, so no arch-list
 # patch is needed.
