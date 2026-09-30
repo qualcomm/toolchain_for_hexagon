@@ -19,7 +19,19 @@ export PATH=${TOOLCHAIN_BIN}:${PATH}
 export FORCE_UNSAFE_CONFIGURE=1
 export BR2_DL_DIR=$PWD/br_download/
 
-make -C buildroot/ O=${PWD}/obj_buildroot/ qcom_dsp_qemu_defconfig
-make -C obj_buildroot -j
-make -C obj_buildroot legal-info
-install -D ./obj_buildroot/images/* ${ARTIFACT_BASE}/${ARTIFACT_TAG}/
+build_buildroot() {
+    local output_dir=$1
+    local defconfig=$2
+    local artifact_dir=$3
+
+    make -C buildroot/ O="${PWD}/${output_dir}" "${defconfig}"
+    make -C "${output_dir}" -j
+    make -C "${output_dir}" legal-info
+    mkdir -p "${artifact_dir}"
+    install -D "${output_dir}"/images/* "${artifact_dir}/"
+}
+
+build_buildroot obj_buildroot qcom_dsp_qemu_defconfig \
+    "${ARTIFACT_BASE}/${ARTIFACT_TAG}"
+build_buildroot obj_buildroot_qcs6490_cdsp qcom_qcs6490_cdsp_defconfig \
+    "${ARTIFACT_BASE}/${ARTIFACT_TAG}/qcs6490-cdsp"

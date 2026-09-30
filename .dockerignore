@@ -5,6 +5,7 @@
 !patches/
 !test-suite-patches/
 !get-src-tarballs.sh
+!build-hexagon-hypervisor.sh
 !*.cmake
 !cmake/
 !hexagon-unknown-none-elf.cfg

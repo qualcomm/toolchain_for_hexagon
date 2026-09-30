@@ -40,6 +40,7 @@ RUN apt update && \
         ninja-build \
 	cpio \
 	python3-psutil \
+	libncurses5 \
 	unzip && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-${HOST_CLANG_VER} 100 && \
     update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${HOST_CLANG_VER} 100 && \
@@ -57,7 +58,8 @@ RUN apt update && \
 
 # From env.sh
 ARG QEMU_REPO=https://github.com/qualcomm/qemu
-ARG QEMU_REF=hexagon-sysemu-24-july-2026
+ARG QEMU_REF=hexagon-sysemu-28-sept-2026
+ARG HEXAGON_SDK_URL=https://softwarecenter.qualcomm.com/api/download/software/sdks/Hexagon_SDK/Linux/Debian/6.6.0.0/Hexagon_SDK_Linux.zip
 
 ARG ARTIFACT_BASE
 ARG ARTIFACT_TAG
@@ -74,7 +76,7 @@ ENV MUSL_SRC_URL https://github.com/quic/musl/archive/hexagon-v1.2.4-sep-2026.ta
 ENV LINUX_SRC_URL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.5.tar.xz
 ENV BUSYBOX_SRC_URL https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 ENV PICOLIBC_SRC_URL https://github.com/picolibc/picolibc/releases/download/1.8.11/picolibc-1.8.11.tar.xz
-ENV BUILDROOT_SRC_URL https://github.com/quic/buildroot/archive/hexagon-2026.07.25.tar.gz
+ENV BUILDROOT_SRC_URL https://github.com/quic/buildroot/archive/hexagon-2026.09.29.tar.gz
 
 ADD patches /root/hexagon-toolchain/patches
 ADD test-suite-patches /root/hexagon-toolchain/test-suite-patches
@@ -83,6 +85,14 @@ ADD *.cmake /root/hexagon-toolchain/
 ADD cmake/caches /root/hexagon-toolchain/cmake/caches/
 ADD hexagon-unknown-none-elf.cfg /root/hexagon-toolchain/
 RUN cd /root/hexagon-toolchain && ./get-src-tarballs.sh ${PWD} ${TOOLCHAIN_INSTALL}/manifest
+
+# H2 is built with Qualcomm's SDK, not with the LLVM toolchain built below.
+RUN wget --progress=dot:giga -O /tmp/Hexagon_SDK_Linux.zip "${HEXAGON_SDK_URL}" && \
+    mkdir -p /opt/Hexagon_SDK && \
+    unzip -q /tmp/Hexagon_SDK_Linux.zip -d /opt/Hexagon_SDK && \
+    rm /tmp/Hexagon_SDK_Linux.zip
+ADD build-hexagon-hypervisor.sh /root/hexagon-toolchain/
+RUN cd /root/hexagon-toolchain && ./build-hexagon-hypervisor.sh
 
 ADD test_init/test_init.c test_init/Makefile /root/hexagon-toolchain/test_init/
 
