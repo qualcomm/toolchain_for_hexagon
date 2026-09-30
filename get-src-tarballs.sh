@@ -7,6 +7,9 @@ set -euo pipefail
 
 CURL_RETRY_OPTS=(--fail --location --silent --show-error --retry 5 --retry-delay 30)
 
+H2_REPO=${H2_REPO:-https://github.com/androm3da/hexagon-hypervisor}
+H2_REF=${H2_REF:-5e1428a425230eed9fcb8c76284269721cb348bf}
+
 apply_patches() {
 	local repo_name=$1
 	local tag_name=$2
@@ -58,6 +61,17 @@ get_src_tarballs() {
 	rm ../qemu.tar.gz
 	echo ${qemu_src_url} > ${MANIFEST_DIR}/qemu.txt
 	cd -
+
+	# H2's Makefile embeds its Git revision in the firmware.  Unlike the other
+	# source archives, this must retain .git so the generated C macro is valid.
+	git init -q hexagon-hypervisor
+	git -C hexagon-hypervisor remote add origin "${H2_REPO}.git"
+	git -C hexagon-hypervisor fetch -q --depth 1 origin "${H2_REF}"
+	git -C hexagon-hypervisor checkout -q --detach FETCH_HEAD
+	{
+		git -C hexagon-hypervisor remote get-url origin
+		git -C hexagon-hypervisor rev-parse HEAD
+	} > ${MANIFEST_DIR}/hexagon-hypervisor.txt
 
 	curl "${CURL_RETRY_OPTS[@]}" ${MUSL_SRC_URL} -o musl.tar.xz
 	mkdir musl

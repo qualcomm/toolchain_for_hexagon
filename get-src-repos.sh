@@ -7,6 +7,8 @@ set -euo pipefail
 
 SRC_DIR=${1}
 MANIFEST_DIR=${2}
+H2_REPO=${H2_REPO:-https://github.com/androm3da/hexagon-hypervisor.git}
+H2_REF=${H2_REF:-5e1428a425230eed9fcb8c76284269721cb348bf}
 
 echo Cloning repos into "${SRC_DIR}":
 git clone -q https://github.com/llvm/llvm-project &
@@ -21,8 +23,10 @@ git clone -q https://github.com/quic/buildroot/ &
 git clone -q --branch=hexagon-v1.2.4-dec-2025 https://github.com/quic/musl &
 git clone -q https://github.com/quic/hexagonMVM &
 git clone -q https://github.com/qemu/qemu &
+git clone -q "${H2_REPO}" hexagon-hypervisor &
 
 wait
+git -C hexagon-hypervisor checkout -q "${H2_REF}"
 git clone -q https://github.com/qualcomm/eld/ llvm-project/eld/
 
 dump_checkout_info() {
