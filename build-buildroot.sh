@@ -31,7 +31,9 @@ build_buildroot() {
     install -D "${output_dir}"/images/* "${artifact_dir}/"
 }
 
-build_buildroot obj_buildroot qcom_dsp_qemu_defconfig \
-    "${ARTIFACT_BASE}/${ARTIFACT_TAG}"
+# The baseline/QEMU buildroot is disabled for now to keep the containerized build
+# within its time limit; re-enable it if the generic rootfs is needed again.
+#build_buildroot obj_buildroot qcom_dsp_qemu_defconfig \
+#    "${ARTIFACT_BASE}/${ARTIFACT_TAG}"
 build_buildroot obj_buildroot_qcs6490_cdsp qcom_qcs6490_cdsp_defconfig \
     "${ARTIFACT_BASE}/${ARTIFACT_TAG}/qcs6490-cdsp"
