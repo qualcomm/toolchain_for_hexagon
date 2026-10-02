@@ -76,7 +76,7 @@ ENV MUSL_SRC_URL https://github.com/quic/musl/archive/hexagon-v1.2.4-sep-2026.ta
 ENV LINUX_SRC_URL https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.13.5.tar.xz
 ENV BUSYBOX_SRC_URL https://busybox.net/downloads/busybox-1.36.1.tar.bz2
 ENV PICOLIBC_SRC_URL https://github.com/picolibc/picolibc/releases/download/1.8.11/picolibc-1.8.11.tar.xz
-ENV BUILDROOT_SRC_URL https://github.com/quic/buildroot/archive/hexagon-2026.09.29.tar.gz
+ENV BUILDROOT_SRC_URL https://github.com/quic/buildroot/archive/hexagon-2026.10.02.tar.gz
 
 ADD patches /root/hexagon-toolchain/patches
 ADD test-suite-patches /root/hexagon-toolchain/test-suite-patches
