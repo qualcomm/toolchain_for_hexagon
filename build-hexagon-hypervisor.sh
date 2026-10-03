@@ -50,3 +50,17 @@ for archv in 68 73 81; do
     install -D -m 0755 "${H2_DIR}/linux/loadlinux" \
         "${OUTPUT_DIR}/hexagon_loadlinux_v${archv}"
 done
+
+archv=68
+make -C "${H2_DIR}" USE_PKW=0 ARCHV="${archv}" TARGET=opt clean
+make -C "${H2_DIR}" -j"$(nproc)" USE_PKW=0 ARCHV="${archv}" TARGET=opt \
+    NULL_ANGEL_TRAP=1 SHUTDOWN_AFTER_GUEST_EXIT=1 H2K_LOAD_ADDR=0x88f00000
+make -C "${H2_DIR}/linux" -j"$(nproc)" USE_PKW=0 ARCHV="${archv}" NO_LOAD=1 \
+    NULL_ANGEL_TRAP=1 SHUTDOWN_AFTER_GUEST_EXIT=1 \
+    LINUX_LINK_ADDR=0xa1000000 \
+    INSTALLPATH="${H2_DIR}/artifacts/v${archv}/opt/install" \
+    KERNELPATH="${H2_DIR}/artifacts/v${archv}/opt/build/kernel" \
+    loadlinux
+
+install -D -m 0755 "${H2_DIR}/linux/loadlinux" \
+    "${OUTPUT_DIR}/hexagon_loadlinux_qcs6490_cdsp"

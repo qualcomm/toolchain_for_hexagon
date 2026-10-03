@@ -1,0 +1,31 @@
+From 3e1532d0a841cb5ebdeae9cc4deefc9467e49b59 Mon Sep 17 00:00:00 2001
+From: Brian Cain <brian.cain@oss.qualcomm.com>
+Date: Fri, 3 Oct 2026 15:00:00 -0500
+Subject: [PATCH] compiler-rt: avoid statx redefinition with musl 1.2.6
+
+musl 1.2.6 exposes struct statx in sys/stat.h.  Do not include linux/stat.h
+for the Hexagon musl configuration, as that header redeclares the structure.
+
+---
+ compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp b/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
+index 7e9164489fed..341543279ed0 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_linux.cpp
+@@ -93,9 +93,10 @@
+ #  endif
+
+ // Hexagon uses statx() instead of stat64().  glibc provides struct statx
+-// through <sys/stat.h>, but musl does not — pull it from <linux/stat.h>.
+-// On this musl/hexagon combination the two headers coexist without conflict.
+-#  if SANITIZER_LINUX && defined(__hexagon__)
++// through <sys/stat.h>, but older musl does not — pull it from <linux/stat.h>.
++// musl 1.2.6 provides the structure itself, so including both headers there
++// would redefine it.
++#  if SANITIZER_LINUX && defined(__hexagon__) && !SANITIZER_MUSL
+ #    include <linux/stat.h>
+ #  endif
+
+2.43.0
